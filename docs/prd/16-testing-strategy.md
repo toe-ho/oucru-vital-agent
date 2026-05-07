@@ -12,10 +12,10 @@ This document defines the comprehensive testing approach for the project. Testin
 
 | Layer | Backend | Frontend |
 |---|---|---|
-| Unit | `pytest` + `pytest-cov` | `Vitest` + `@testing-library/react` |
-| Integration | `pytest` + `httpx` (async client) | `Playwright` (E2E) |
+| Unit | `pytest` + `pytest-cov` | Next.js/React component tests with React Testing Library |
+| Integration | `pytest` + `httpx` (async client) | User-flow tests for key frontend/backend flows |
 | Performance | `pytest-benchmark`, custom timing scripts | Lighthouse CI |
-| Coverage | `pytest-cov` (target: >80%) | `@vitest/coverage-v8` (target: >80%) |
+| Coverage | `pytest-cov` (target: >80%) | Frontend coverage target: >80% |
 
 ---
 
@@ -29,21 +29,22 @@ Each agent tool is tested independently with controlled sample data. Tests mock 
 
 | Tool | Test Cases |
 |---|---|
-| `assess_ecg_quality` / `assess_ppg_quality` | Valid EDF file, valid MIT/WFDB file, valid CSV, corrupted file, empty file, unsupported format |
-| `preprocess_signal` | Clean signal, signal with NaN values, signal below minimum length, unusual sampling rate (50 Hz, 2000 Hz) |
-| `compute_ecg_sqis` / `compute_ppg_sqis` | All 47+ SQI metrics on clean signal, all metrics on flat-line signal, all metrics on clipped signal, signal-type-specific metrics |
-| `compute_ecg_sqis` / `compute_ppg_sqis` | All segments accept, all segments reject, mixed classification, segments with missing SQI values |
-| `compute_ecg_sqis` | Rule matches first condition, rule falls through to default, empty ruleset, custom thresholds |
-| `generate_report` | Report with all data present, report with partial data, report with zero accepted segments |
-| `query_history` / `get_segment_detail` | Successful database query, non-existent recording ID, malformed UUID, empty result set |
+| `load_signal_file` | Valid CSV, valid Parquet, missing file, missing column, non-numeric signal values, unusual sampling rate (50 Hz, 2000 Hz) |
+| `compute_sqi` | Clean ECG/PPG signal, flat-line signal, clipped signal, noisy signal, unsupported signal type |
+| `compute_sqi_windowed` | All windows pass, all windows fail, mixed quality windows, short signal below one window, custom window duration |
+| `preprocess_ppg` | Clean PPG, PPG with NaN values, signal below minimum length, high-frequency noise, baseline wander |
+| `extract_hrv_features` | Valid RR intervals, empty RR intervals, irregular intervals, physiologically implausible intervals |
+| `estimate_spo2` | Valid red/IR signals, missing channel, mismatched channel lengths, clipped channels |
+| `extract_ppg_dc_layer` | Stable DC trend, drifting baseline, noisy signal, short signal |
+| `check_clinical_thresholds` | Normal values, low SQI, low/high HR, low SpO2, missing optional values |
 
 **Example test structure (pytest):**
 
 ```python
-# tests/unit/test_compute_ecg_sqis.py
+# tests/unit/test_compute_sqi.py
 import pytest
 import numpy as np
-from app.tools.ecg_quality import compute_ecg_sqis
+from app.tools.sqi_tools import compute_sqi
 
 @pytest.fixture
 def clean_ecg_segment():
@@ -51,18 +52,16 @@ def clean_ecg_segment():
     t = np.linspace(0, 30, 30 * 250)
     return np.sin(2 * np.pi * 1.2 * t)  # synthetic ~72 bpm signal
 
-def test_compute_ecg_sqis_returns_all_metrics(clean_ecg_segment):
-    result = compute_ecg_sqis(clean_ecg_segment, sampling_rate=250)
-    assert "kurtosis" in result.metrics
-    assert "sdnn" in result.metrics
-    assert "snr" in result.metrics
-    assert len(result.metrics) >= 10
+def test_compute_sqi_returns_quality_score(clean_ecg_segment):
+    result = compute_sqi(clean_ecg_segment, fs=250, signal_type="ecg")
+    assert "sqi_score" in result
+    assert 0 <= result["sqi_score"] <= 1
 
-def test_compute_ecg_sqis_handles_flatline():
+def test_compute_sqi_handles_flatline():
     flat = np.zeros(30 * 250)
-    result = compute_ecg_sqis(flat, sampling_rate=250)
-    assert result.classification == "reject"
-    assert result.error is None  # no crash
+    result = compute_sqi(flat, fs=250, signal_type="ecg")
+    assert result["sqi_score"] < 0.4
+    assert "error" not in result
 ```
 
 ### 1.2 Backend — API Endpoint Handlers
@@ -79,7 +78,7 @@ Test FastAPI route handlers with mocked service layer. Use `pytest` + `httpx.Asy
 | `GET /api/reports/{report_id}` | Report available, report not yet generated, export format (PDF/HTML) |
 | `GET /health` | Always returns 200 with service status |
 
-### 1.3 Frontend — Component Tests (Vitest)
+### 1.3 Frontend — Component Tests
 
 Test React components in isolation using `@testing-library/react`.
 
@@ -134,7 +133,7 @@ Test the complete chain: database ↔ backend ↔ frontend API contract.
 
 ### 2.3 Frontend ↔ Backend Communication
 
-> **Note:** Playwright E2E tests are recommended for Phase 4+ if the team has capacity. For MVP (Phases 1–3), manual browser testing and Vitest component tests are sufficient. This resolves the noted contradiction with the tech stack decision of "No Playwright for MVP."
+> **Note:** E2E tests are recommended for Phase 4+ if the team has capacity. For MVP (Phases 1–3), manual browser testing and component tests are sufficient.
 
 Playwright E2E tests covering user flows (Phase 4+):
 
@@ -169,44 +168,6 @@ def test_chat_rejects_missing_recording_id():
     # POST /api/chat with no recording_id → 422 or descriptive 400
     ...
 ```
-
-### 2.5 Token-Encoding Unit and Integration Tests
-
-Token-encoding must be verified with both unit tests (encode/decode correctness) and integration tests (encoding applied before LLM call).
-
-**Unit tests:**
-
-```python
-# tests/unit/test_token_encoding.py
-def test_encode_patient_id_returns_pseudonym():
-    pseudonym = encode_patient_id("PT-12345")
-    assert pseudonym != "PT-12345"
-    assert len(pseudonym) > 0
-
-def test_decode_returns_original():
-    pseudonym = encode_patient_id("PT-12345")
-    original = decode_patient_id(pseudonym)
-    assert original == "PT-12345"
-
-def test_encode_is_deterministic():
-    assert encode_patient_id("PT-12345") == encode_patient_id("PT-12345")
-
-def test_unknown_pseudonym_raises():
-    with pytest.raises(KeyError):
-        decode_patient_id("nonexistent-uuid")
-```
-
-**Integration test — encoding applied before LLM call:**
-
-```python
-# tests/integration/test_privacy_encoding_pipeline.py
-def test_llm_prompt_does_not_contain_raw_patient_id(mock_llm_client):
-    run_full_pipeline("tests/fixtures/sample_ecg.edf", patient_id="PT-99999")
-    for call in mock_llm_client.calls:
-        assert "PT-99999" not in call.prompt, "Raw patient ID leaked into LLM prompt"
-```
-
----
 
 ## 3. Performance Tests
 
@@ -250,7 +211,7 @@ assertions:
 
 ### 3.4 Agent Decision Latency
 
-Track per-step LLM inference time logged by LangGraph. Alert if median step latency exceeds 5 seconds.
+Track per-step LLM inference time logged by the smolagents workflow. Alert if median step latency exceeds 5 seconds.
 
 **Metrics logged per pipeline run:**
 

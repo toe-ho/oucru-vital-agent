@@ -33,7 +33,7 @@ The result is delayed detection of quality issues, compromised research data int
 
 Build an **agentic AI system** that autonomously monitors waveform data quality end-to-end — from file upload through signal assessment to report generation — without manual intervention.
 
-The system uses an LLM-powered agent (Google Gemini 2.0 Flash via Vertex AI as primary, with open-source fallback via Ollama) as the orchestration "brain." The LLM does not perform signal processing; it reasons about which quality assessment tools to invoke, interprets their outputs, and synthesizes findings into actionable reports. OUCRU's existing `vital_sqi` Python library serves as the "toolbox" — the agent calls `vital_sqi` functions via a structured tool-wrapper layer.
+The system uses a smolagents-powered agent with Ollama + Qwen3-8B as the orchestration "brain." The LLM does not perform signal processing; it reasons about which approved quality assessment tools to invoke, interprets their outputs, and synthesizes findings into actionable reports. OUCRU signal-processing libraries serve as the "toolbox" — the agent calls approved Python functions via a structured tool-wrapper layer.
 
 > **Critical design constraint:** The team does NOT build new signal processing algorithms or ML models for quality detection. All signal assessment logic resides in `vital_sqi`. The agent's value is in orchestration, contextual reasoning, and communication.
 
@@ -45,13 +45,12 @@ The system uses an LLM-powered agent (Google Gemini 2.0 Flash via Vertex AI as p
 
 | Component | Description |
 |-----------|-------------|
-| **Tool Wrappers** | Python wrappers exposing `vital_sqi` functions as structured agent tools |
-| **Agent Orchestration Layer** | LLM-based agent (Gemini via Vertex AI primary; Ollama open-source fallback) that plans and executes quality checks |
+| **Tool Wrappers** | Python wrappers exposing OUCRU signal-processing functions as structured agent tools |
+| **Agent Orchestration Layer** | smolagents-based agent using Ollama + Qwen3-8B to plan and execute quality checks |
 | **REST API Backend** | FastAPI service exposing upload, assessment, and report endpoints |
-| **Web Dashboard** | React/TypeScript dashboard for medical practitioners to upload data and view results |
+| **Web Dashboard** | Next.js/React/Tailwind dashboard for medical practitioners to upload data and view results |
 | **Automated Report Generation** | Structured PDF/JSON quality reports generated without manual intervention |
 | **Chatbot Interface** | Natural language query interface allowing practitioners to ask questions about quality results |
-| **Token-Encoding Privacy Layer** | Anonymisation/encoding layer for waveform metadata before transmission to any external LLM API |
 
 ---
 
@@ -72,5 +71,5 @@ The system uses an LLM-powered agent (Google Gemini 2.0 Flash via Vertex AI as p
 |------|--------|
 | Cloud platform | Google Cloud Platform (GCP) |
 | Budget | ~$2,000–$3,000 GCP credits |
-| LLM | Google Gemini 2.0 Flash via Vertex AI (primary, covered by GCP credits); Ollama + Llama 3.1 8B (optional self-hosted fallback) |
-| Signal processing | `vital_sqi` open-source library — no licensing cost |
+| LLM | Ollama + Qwen3-8B for local-first workflow planning, report explanation, and Q&A |
+| Signal processing | `vital_sqi`, `vitalDSP`, NumPy, SciPy, NeuroKit2, WFDB, Pandas, and PyArrow — no licensing cost |

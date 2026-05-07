@@ -21,11 +21,11 @@
 | **CVNN** | Coefficient of Variation of NN intervals. SDNN normalized by the mean NN interval; dimensionless measure of overall HRV. |
 | **DTW** | Dynamic Time Warping. An algorithm for measuring similarity between two time sequences that may vary in speed or phase. Used as an SQI metric by comparing a signal segment to a clean template. |
 | **SNR** | Signal-to-Noise Ratio. A measure of signal strength relative to background noise. Higher SNR indicates a cleaner signal. Expressed in decibels (dB). |
-| **LLM** | Large Language Model. A deep learning model trained on large text corpora capable of generating and understanding natural language. Examples: GPT-4o, Claude 3.5 Sonnet, Llama 3.1. |
-| **LangGraph** | A Python framework for building stateful, multi-step AI agent workflows as directed graphs. Built on top of LangChain. Enables cycles, conditional branching, and persistent state in agent loops. |
-| **LangChain** | A Python/TypeScript framework providing abstractions for building LLM-powered applications, including chains, memory, tools, and retrieval-augmented generation (RAG). |
+| **LLM** | Large Language Model. A deep learning model trained on large text corpora capable of generating and understanding natural language. In this project, Qwen3-8B runs through Ollama. |
+| **smolagents** | A Python agent framework that lets an LLM call approved tools while keeping execution constrained to the registered tool set. |
+| **Ollama** | A local LLM runtime used to serve Qwen3-8B for workflow planning, report explanation, and chatbot Q&A. |
 | **Agent (AI)** | An autonomous software entity that uses an LLM to perceive inputs, reason about actions, invoke tools, and iteratively work toward a goal without step-by-step human instruction. |
-| **Orchestration** | The coordination and sequencing of multiple agent steps, tool calls, and sub-processes to accomplish a complex task. LangGraph handles orchestration in this project. |
+| **Orchestration** | The coordination and sequencing of multiple agent steps, tool calls, and sub-processes to accomplish a complex task. smolagents handles orchestration in this project. |
 | **Pipeline** | An automated sequence of data processing steps executed in order: load → preprocess → segment → compute SQI → classify → report. |
 | **Monorepo** | A single version-controlled repository containing multiple distinct projects or packages (e.g., frontend + backend + shared types), enabling unified versioning and cross-package refactoring. |
 | **REST API** | Representational State Transfer Application Programming Interface. An architectural style for distributed hypermedia systems using HTTP methods (GET, POST, PUT, DELETE) with stateless requests. |
@@ -39,9 +39,7 @@
 | **ReAct pattern** | Reasoning + Acting. An agent design pattern where the LLM alternates between reasoning steps (Thought) and action steps (Action/Observation) in a loop until a final answer is reached. |
 | **Tool (agent)** | A callable function exposed to an LLM agent. The agent selects tools by name, provides typed arguments, and receives structured results. Examples: `compute_sqi_tool`, `classify_segments_tool`. |
 | **OUCRU** | Oxford University Clinical Research Unit. A research unit affiliated with the University of Oxford, conducting clinical and epidemiological research in Southeast Asia, headquartered in Ho Chi Minh City, Vietnam. |
-| **Token-Encoding** | A privacy layer that pseudonymizes patient identifiers and sensitive metadata before data is passed to external or local LLM services. Each real identifier is mapped to a generated token (e.g., a UUID); the mapping is stored in a dedicated database table to allow authorized re-identification. Encoding is applied at the boundary between the internal data store and any outbound LLM prompt. |
-| **Pseudonymization** | A data de-identification technique in which directly identifying fields (e.g., patient names, file names containing IDs) are replaced with artificial identifiers (pseudonyms). Unlike anonymization, pseudonymization is reversible given access to the mapping table. Used in this project as part of the token-encoding privacy layer. |
-| **Chatbot Interface** | Screen 6 of the web dashboard. Provides a conversational interface allowing users to ask natural-language questions about a specific recording's quality assessment results. Backed by the `POST /chat` API endpoint, which invokes the LangGraph agent with the recording's stored SQI results and agent logs as grounding context. |
+| **Chatbot Interface** | Screen 6 of the web dashboard. Provides a conversational interface allowing users to ask natural-language questions about a specific recording's quality assessment results. Backed by the `POST /chat` API endpoint, which invokes the smolagents workflow with the recording's stored SQI results and agent logs as grounding context. |
 
 ---
 
@@ -53,7 +51,7 @@
 | vital_sqi pip install | `pip install vitalSQI-toolkit` |
 | vital-DSP GitHub | https://github.com/Oucru-Innovations/vital-DSP (Key dependency of vital_sqi — provides the DEFAULT PPG peak detector and DSP utilities; installed automatically via vitalSQI-toolkit) |
 | OUCRU Innovations GitHub | https://github.com/Oucru-Innovations |
-| LangGraph Documentation | https://langchain-ai.github.io/langgraph/ |
+| smolagents Documentation | https://huggingface.co/docs/smolagents/ |
 | FastAPI Documentation | https://fastapi.tiangolo.com/ |
 | PhysioNet (public ECG/PPG datasets) | https://physionet.org/ |
 
@@ -107,15 +105,18 @@ vital_sqi/
     └── rule_dict.json         → 51 rule definitions (accept/reject thresholds)
 ```
 
-### Key Entry Points
+### Key Agent Tool Entry Points
 
-| Function | Module | Description |
-|---|---|---|
-| `get_ecg_sqis()` | `pipeline_highlevel.py` | Full ECG pipeline: load → preprocess → segment → SQI → classify |
-| `get_ppg_sqis()` | `pipeline_highlevel.py` | Full PPG pipeline: load → preprocess → segment → SQI → classify |
-| `SignalSQI` | `data/signal_sqi_class.py` | Core data container passed between all pipeline stages |
-| `extract_sqi()` | `pipeline_functions.py` | Compute all SQI metrics for a list of segments |
-| `classify_segments()` | `pipeline_functions.py` | Apply ruleset to SQI values; return ACCEPT/REJECT per segment |
+| Function | Description |
+|---|---|
+| `load_signal_file()` | Load CSV or Parquet waveform data into numeric samples with sampling metadata |
+| `compute_sqi()` | Compute an overall ECG or PPG signal quality score |
+| `compute_sqi_windowed()` | Compute per-window SQI values for segment-level quality analysis |
+| `preprocess_ppg()` | Filter, normalize, and detect peaks in PPG signals |
+| `extract_hrv_features()` | Extract HRV features from RR intervals |
+| `estimate_spo2()` | Estimate SpO2 from red and infrared PPG channels |
+| `extract_ppg_dc_layer()` | Extract PPG DC-layer trends |
+| `check_clinical_thresholds()` | Flag HR, SpO2, or SQI values outside configured thresholds |
 
 ---
 

@@ -77,16 +77,6 @@ The chatbot shall also explain configuration options, translate SQI metric names
 
 ---
 
-### G7 — Token-Encoding Privacy Layer
-
-Implement a preprocessing layer that anonymises or encodes waveform metadata and clinical context tokens before they are included in any prompt sent to an external LLM API. This is a security best practice to mitigate privacy risk when using hosted LLM endpoints.
-
-Implementation approach: Reversible token substitution map applied at the agent's prompt-construction layer; decoded on response receipt. Encoding strategy shall be configurable per deployment and documented with its privacy guarantees and information loss characteristics.
-
-**Success criterion:** All prompts sent to external LLM APIs pass through the encoding layer with no raw metadata tokens exposed; decoded responses are functionally equivalent to unencoded responses.
-
----
-
 ## Non-Goals
 
 > The following are explicitly out of scope for this project. These boundaries exist to keep the project focused and deliverable within the capstone timeline and budget.
@@ -101,7 +91,7 @@ The project will **not** reimplement or fork `vital_sqi` functionality. The libr
 
 ### NG3 — No Real-Time Streaming
 
-The initial system operates on **offline recordings** — files already collected and stored. Real-time streaming ingestion from live devices is not in scope for this phase.
+The initial system operates on **offline recordings** — files already collected and stored. Real-time waveform streaming or live-device ingestion is not in scope for the MVP and is deferred to post-MVP/future work.
 
 ### NG4 — No Mobile Application
 

@@ -37,7 +37,7 @@ Ph 5  │     │     │     │     │     │     │     │     │     �
 ```
 Phase 1 (Foundation)
     │
-    │ Gate: Docker Compose running, vital_sqi importable in backend container, DB migrations applied
+    │ Gate: Docker Compose running, OUCRU signal tools importable in backend container, DB migrations applied
     ▼
 Phase 2 (Agent Core)
     │
@@ -60,29 +60,29 @@ Phase 5 (Delivery & Core Features)
 
 ## Phase 1: Foundation (Weeks 1–3)
 
-**Goal:** Establish a working development environment with all core services running and `vital_sqi` integrated.
+**Goal:** Establish a working development environment with all core services running and OUCRU signal tools integrated.
 
 ### Tasks
 
-- [ ] **Monorepo setup**: Initialize repository with `/backend` (Python/FastAPI) and `/frontend` (React/Vite) directories. Configure shared `docker-compose.yml` at root.
-- [ ] **Docker Compose**: Define services — `backend` (Python 3.11, includes vital_sqi), `frontend`, `postgres`. Add `ollama` as an optional service under the `local-llm` profile (`docker compose --profile local-llm up`). Default `docker compose up` uses Gemini API and does not require the Ollama container. Ensure all required services start with `docker compose up`.
-- [ ] **CI/CD pipeline**: Configure GitHub Actions with jobs: `lint` (Ruff + ESLint), `test` (pytest + Vitest), `build` (Docker image builds). Pipeline must pass before merge to `main`.
-- [ ] **vital_sqi integration**: Install `vital_sqi` (`pip install vitalSQI-toolkit`) directly in the backend container (Python 3.11). Run library's sample scripts against provided test EDF/CSV files. Verify all 4 pipeline functions (`get_ecg_sqis`, `get_ppg_sqis`, `get_qualified_ecg`, `get_qualified_ppg`) work with sample data on Python 3.11. Write a `vital_sqi_smoke_test.py` that calls the main segmentation and SQI functions and asserts expected output shapes.
+- [ ] **Monorepo setup**: Initialize repository with `/backend` (Python/FastAPI) and `/frontend` (Next.js/React/Tailwind CSS) directories. Configure shared `docker-compose.yml` at root.
+- [ ] **Docker Compose**: Define services — `backend` (Python 3.11, includes OUCRU signal dependencies), `frontend`, `postgres`, and `ollama` running Qwen3-8B. Ensure all required services start with `docker compose up`.
+- [ ] **CI/CD pipeline**: Configure GitHub Actions with jobs: `lint` (Ruff + ESLint), `test` (Pytest + frontend tests), `build` (Docker image builds). Pipeline must pass before merge to `main`.
+- [ ] **OUCRU signal-tool integration**: Install required OUCRU signal-processing dependencies directly in the backend container (Python 3.11). Run sample scripts against provided ECG/PPG CSV or Parquet files. Verify the registered tools (`load_signal_file`, `compute_sqi`, `compute_sqi_windowed`, `preprocess_ppg`, `extract_hrv_features`, `estimate_spo2`, `extract_ppg_dc_layer`, `check_clinical_thresholds`) work with sample data on Python 3.11. Write an `oucru_signal_tools_smoke_test.py` that calls the main loading and SQI functions and asserts expected output shapes.
 - [ ] **FastAPI scaffolding**: Implement base app structure — routers, dependency injection, CORS config, health check endpoint (`GET /health`). Configure Pydantic Settings for environment variables.
 - [ ] **Database setup**: Write SQLAlchemy models for all 6 tables (see `11-data-model.md`). Create Alembic migration files. Apply migrations via `alembic upgrade head` on container start.
-- [ ] **Frontend scaffolding**: Initialize Vite + React + TypeScript project. Configure Tailwind CSS and shadcn/ui. Set up React Router v6 with placeholder routes for all 6 screens. Implement global navigation bar component.
+- [ ] **Frontend scaffolding**: Initialize Next.js + React + TypeScript project. Configure Tailwind CSS. Set up App Router routes for all 6 screens. Implement global navigation bar component.
 - [ ] **Basic file upload endpoint**: `POST /api/upload` — accepts multipart file, validates extension and size, stores to filesystem, creates `recordings` row with status `uploaded`.
 
 ### Deliverable
 
-All 3 required services (`backend`, `frontend`, `db`) run via `docker compose up`. A signal file can be uploaded via `POST /api/upload` and the resulting row is visible in PostgreSQL. `vital_sqi` functions are importable and callable from within the backend container without errors.
+All required services (`backend`, `frontend`, `db`, `ollama`) run via `docker compose up`. A signal file can be uploaded via `POST /api/upload` and the resulting row is visible in PostgreSQL. OUCRU signal tools are importable and callable from within the backend container without errors.
 
 ### Success Criteria
 
 - [ ] `docker compose up` starts all services without manual intervention
 - [ ] `GET /health` returns `{"status": "ok"}`
 - [ ] `POST /api/upload` returns `201` with a recording UUID
-- [ ] `vital_sqi_smoke_test.py` passes against a sample 10-second ECG file
+- [ ] `oucru_signal_tools_smoke_test.py` passes against sample ECG/PPG files
 - [ ] All Alembic migrations apply cleanly on a fresh database
 - [ ] CI pipeline passes on `main` branch
 
@@ -94,17 +94,17 @@ All 3 required services (`backend`, `frontend`, `db`) run via `docker compose up
 
 ### Tasks
 
-- [ ] **Tool wrappers (8 functions)**: Implement thin Python wrappers that call `vital_sqi` functions via direct Python imports (no HTTP). Each wrapper takes typed parameters, calls the relevant `vital_sqi` function, and returns a structured dict. Functions:
-  1. `assess_ecg_quality(file_path, sampling_rate, ...)` — run full ECG pipeline: preprocess, segment, compute SQIs, classify
-  2. `assess_ppg_quality(file_path, sampling_rate, ...)` — equivalent full PPG pipeline
-  3. `compute_ecg_sqis(file_path, sampling_rate, ...)` — compute ECG SQI scores only, no classification
-  4. `compute_ppg_sqis(file_path, sampling_rate, ...)` — compute PPG SQI scores only, no classification
-  5. `preprocess_signal(file_path, sampling_rate, signal_type, ...)` — bandpass filter, trim, baseline wander removal
-  6. `generate_report(recording_id, assessment_result, agent_interpretation, ...)` — compile and persist quality report
-  7. `query_history(subject_id, device_id, ...)` — fetch past assessment results for trend analysis
-  8. `get_segment_detail(recording_id, segment_id)` — retrieve full SQI breakdown and waveform data for a segment
-- [ ] **LangGraph agent setup**: Define agent state schema. Implement ReAct loop as a LangGraph `StateGraph` with nodes: `analyze_metadata`, `preprocess`, `run_pipeline`, `interpret_results`, `fetch_details`, `generate_report`, `finalize_or_escalate`. Register all 8 tool wrappers.
-- [ ] **LLM provider abstraction layer**: Implement `BaseLLMProvider` abstract class (`backend/app/agent/llm/base_provider.py`) with `invoke()`, `stream()`, and `get_model_name()` methods. Implement `GeminiProvider` (primary, via `langchain-google-vertexai`) and `OllamaProvider` (optional fallback). Implement `get_llm_provider()` factory function reading `LLM_PROVIDER` env var (default: `gemini`). Write system prompt that instructs the model to use tools for data retrieval and avoid hallucinating metric values. Test tool-calling with Gemini 2.0 Flash via Vertex AI.
+- [ ] **Tool wrappers (8 functions)**: Implement thin Python wrappers matching the OUCRU reference tool interface. Each wrapper takes typed parameters, calls the relevant signal-processing function, and returns a structured dict. Functions:
+  1. `load_signal_file(file_path, column="ppg", fs=100)` — load CSV or Parquet waveform data
+  2. `compute_sqi(signal, fs=100, signal_type="ppg")` — compute overall ECG/PPG quality
+  3. `compute_sqi_windowed(signal, fs=100, signal_type="ppg", window_sec=30)` — compute window-level quality
+  4. `preprocess_ppg(signal, fs=100)` — filter, normalize, and detect PPG peaks
+  5. `extract_hrv_features(rr_intervals_ms, fs=100)` — compute HRV features
+  6. `estimate_spo2(red_signal, ir_signal, fs=100)` — estimate oxygen saturation from red/IR channels
+  7. `extract_ppg_dc_layer(signal, fs=100)` — extract the PPG DC layer for trend analysis
+  8. `check_clinical_thresholds(heart_rate_bpm=None, spo2_pct=None, sqi_score=None)` — emit structured clinical/quality flags
+- [ ] **smolagents agent setup**: Define the agent prompt, task-plan loader, approved tool registry, and decision loop using smolagents. Register all 8 OUCRU tool wrappers.
+- [ ] **Ollama runtime setup**: Configure Ollama + Qwen3-8B in `config.yaml`. Write system prompt that instructs the model to use approved tools for data retrieval and avoid hallucinating metric values. Test tool-calling with Qwen3-8B through Ollama.
 - [ ] **Processing endpoint**: `POST /api/assess` — triggers agent as a background task. Updates `recordings.status` to `processing`. On completion, sets status to `completed` or `failed`.
 - [ ] **Results storage**: After each segment is processed, persist `segments` row and all `sqi_results` rows. Persist `agent_logs` rows for each tool call made by the agent.
 - [ ] **Status polling endpoint**: `GET /api/results/{recording_id}` — returns current status and progress percentage (segments processed / total segments).
@@ -112,7 +112,7 @@ All 3 required services (`backend`, `frontend`, `db`) run via `docker compose up
 
 ### Deliverable
 
-A single API call to `POST /api/assess` triggers the agent, which loads the file, segments it, computes SQI metrics for each segment, classifies each segment, and stores all results in PostgreSQL. The agent logs every tool call. LLM provider abstraction layer (`BaseLLMProvider`) is in place — switching between Gemini and Ollama requires only changing the `LLM_PROVIDER` environment variable.
+A single API call to `POST /api/assess` triggers the agent, which loads the file, segments it, computes SQI metrics for each segment, classifies each segment, and stores all results in PostgreSQL. The agent logs every tool call. Ollama + Qwen3-8B is configured in `config.yaml`, and the smolagents workflow can call only the registered OUCRU tools.
 
 ### Success Criteria
 
@@ -133,8 +133,8 @@ A single API call to `POST /api/assess` triggers the agent, which loads the file
 
 - [ ] **Upload Page** (Screen 1): Implement drag-and-drop file upload with `react-dropzone`. Signal type radio and sampling rate input. On submit, call `POST /api/upload` then `POST /api/assess`. Poll `GET /api/results/{recording_id}` every 2 seconds and show progress. Redirect to Monitoring Screen on completion.
 - [ ] **TanStack Query setup**: Configure `QueryClient`. Create typed query hooks for all API endpoints: `useRecording`, `useSegments`, `useSqiResults`, `useAgentLogs`, `useSettings`.
-- [ ] **Monitoring Screen** (Screen 2): Implement Plotly.js waveform display. Fetch raw signal data from `GET /api/recordings/{recording_id}/waveform?start=0&end=60&downsample=5000` (returns downsampled channel data). Render color-coded segment overlay. Segment navigation with prev/next buttons and dropdown. SQI scores panel updates on segment change.
-- [ ] **Waveform endpoint**: `GET /api/recordings/{recording_id}/waveform` — backend reads the original file via `vital_sqi`, returns downsampled channel data to max 10000 points (configurable via `downsample` query param) for browser rendering.
+- [ ] **Monitoring Screen** (Screen 2): Implement waveform display and Recharts-based trend visualizations. Fetch raw signal data from `GET /api/recordings/{recording_id}/waveform?start=0&end=60&downsample=5000` (returns downsampled channel data). Render color-coded segment overlay. Segment navigation with prev/next buttons and dropdown. SQI scores panel updates on segment change.
+- [ ] **Waveform endpoint**: `GET /api/recordings/{recording_id}/waveform` — backend reads the original file via OUCRU signal-loading tools, returns downsampled channel data to max 10000 points (configurable via `downsample` query param) for browser rendering.
 - [ ] **Quality Dashboard** (Screen 3): Implement summary KPI cards, accept/reject bar chart, timeline heatmap (one div per segment, colored by classification). Alerts panel populated from segments where `quality_score < 0.4`. Recent recordings table.
 - [ ] **API integration**: All data fetched from real backend endpoints. No mock data in production code. Loading skeletons shown during fetch. Error states handled with retry buttons.
 - [ ] **Routing and navigation**: All 6 routes functional. Active route highlighted in nav bar. Browser back/forward navigation works correctly.
@@ -150,7 +150,7 @@ The full dashboard renders real assessment results. A user can upload a file, wa
 - [ ] All 4 KPI cards show correct counts matching DB
 - [ ] Timeline heatmap renders all segments in correct order
 - [ ] Segment navigation updates waveform view and SQI panel without page reload
-- [ ] Vitest component tests cover Upload Page and Monitoring Screen
+- [ ] Frontend component tests cover Upload Page and Monitoring Screen
 
 ---
 
@@ -160,8 +160,8 @@ The full dashboard renders real assessment results. A user can upload a file, wa
 
 ### Tasks
 
-- [ ] **Report generation endpoint**: `POST /api/assess` (report step) — agent generates a structured report using `content_json` schema: `{summary, timeline, flagged_segments[], recommendations[]}`. Renders to HTML using a Jinja2 template. Optionally exports to PDF via `weasyprint`.
-- [ ] **Report Viewer** (Screen 4): Fetch and render report HTML. Embed timeline chart (Plotly). Flagged segments table. Export buttons (PDF download, HTML download, print).
+- [ ] **Report generation endpoint**: `POST /api/assess` (report step) — agent generates the canonical `content_json` schema: `{summary, timeline, flagged_segments[], recommendations[], confidence, skipped_steps[], limitations[]}`. HTML and PDF are rendered exports from this JSON payload.
+- [ ] **Report Viewer** (Screen 4): Fetch and render report HTML. Embed Recharts timeline visualization. Flagged segments table. Export buttons (PDF download, HTML download, print).
 - [ ] **Agent interpretation improvements**: Enhance system prompt to produce: (1) per-segment natural language explanation of rejection reason, (2) recording-level pattern detection (e.g., "quality degrades after minute 3"), (3) actionable recommendations. Test with 5 diverse recordings.
 - [ ] **Settings Page** (Screen 5): Implement threshold configuration table with inline editing. Segmentation config controls. `PUT /api/settings/thresholds` endpoint. Import/Export JSON buttons. Reset to defaults with confirmation dialog.
 - [ ] **Agent logs viewer**: Add a collapsible panel in the Monitoring Screen (or a separate `/recordings/:id/logs` route) that shows the agent's step-by-step tool calls and reasoning for the current recording.
@@ -184,20 +184,19 @@ Automated HTML/PDF reports are generated per recording. The Settings page allows
 
 ## Phase 5: Delivery & Core Features (Weeks 15–16)
 
-**Goal:** Polish, deploy, and prepare the prototype for the capstone presentation. Deliver chatbot and token-encoding as core features alongside deployment and demo preparation.
+**Goal:** Polish, deploy, and prepare the prototype for the capstone presentation. Deliver chatbot, deployment, and demo readiness as core final-phase outcomes.
 
 ### Tasks
 
 - [ ] **Chatbot interface**: Implement Screen 6. Backend endpoint `POST /api/chat` accepts a message + `recording_id`, invokes the agent with conversational context, returns a natural language response. Frontend chat panel with suggested questions. Chatbot must be able to answer questions about segment rejection reasons and SQI explanations.
-- [ ] **Token-encoding privacy layer**: Implement pseudonymization of patient identifiers in filenames and metadata before storage. Configurable via Settings. Reversible with a stored mapping table. Encoding applied before any data leaves the system boundary (e.g., before external LLM calls).
 - [ ] **End-to-end testing**: Manual QA pass on all 6 screens including chatbot. Run full pipeline on at least 3 diverse recordings (different signal types, durations, quality levels). Fix any bugs found.
 - [ ] **Documentation finalization**: Update `README.md` with setup instructions. Finalize all `./docs/prd/` files. Write `docs/vital-sqi-compatibility-patches.md` if any patches were applied.
-- [ ] **GCP deployment**: Deploy backend to Cloud Run. Deploy frontend static bundle to Cloud Run (nginx). Provision Cloud SQL PostgreSQL. Enable Vertex AI API and configure `GOOGLE_CLOUD_PROJECT` and `LLM_PROVIDER=gemini` via Secret Manager — no GPU VM required. Set up all environment variables and secrets via Secret Manager.
+- [ ] **GCP deployment**: Deploy backend to Cloud Run. Deploy frontend to Cloud Run. Provision Cloud SQL PostgreSQL and GCS buckets. Configure Ollama/Qwen3-8B runtime access and required secrets/settings via Secret Manager and `config.yaml`. Set up all environment variables and secrets via Secret Manager.
 - [ ] **Demo preparation**: Prepare a 5-minute demo script using a real OUCRU ECG/PPG dataset. Rehearse the upload → process → monitor → report → chat flow. Prepare slide deck for presentation.
 
 ### Deliverable
 
-A polished, deployed prototype accessible via a public Cloud Run URL. Chatbot interface and token-encoding privacy layer are functional and demonstrated. Full demo flow rehearsed and ready. All documentation complete.
+A polished, deployed prototype accessible via a public Cloud Run URL. Chatbot interface is functional and demonstrated. Full demo flow rehearsed and ready. All documentation complete.
 
 ### Success Criteria
 
@@ -207,7 +206,6 @@ A polished, deployed prototype accessible via a public Cloud Run URL. Chatbot in
 - [ ] All known critical and high-severity bugs resolved
 - [ ] `docker compose up` still works for local development after cloud deployment
 - [ ] Chatbot (`POST /api/chat`) returns accurate, context-grounded responses about segment rejection and SQI scores for a given recording
-- [ ] Token-encoding layer encodes patient identifiers before storage and before any external LLM call; decoding via stored mapping is verified correct
 
 ---
 

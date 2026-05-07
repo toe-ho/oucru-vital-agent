@@ -6,7 +6,7 @@
 
 ## Overview
 
-This document captures the user stories for the **Agentic AI for High-Frequency Data Quality Monitoring** system at OUCRU. Stories are derived from three primary personas and cover all critical workflows from data ingestion through agentic processing, reporting, chatbot interactions, and privacy encoding.
+This document captures the user stories for the **Agentic AI for High-Frequency Data Quality Monitoring** system at OUCRU. Stories are derived from three primary personas and cover all critical workflows from data ingestion through agentic processing, reporting, and chatbot interactions.
 
 ---
 

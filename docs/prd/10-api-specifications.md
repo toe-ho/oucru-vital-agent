@@ -47,7 +47,7 @@ Upload a waveform file and register it as a new recording.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `file` | binary | yes | EDF or CSV waveform file |
+| `file` | binary | yes | EDF, MIT/WFDB bundle, CSV, or Parquet waveform file |
 | `signal_type` | string | yes | `"ecg"` or `"ppg"` |
 | `sampling_rate` | number | yes | Samples per second (e.g., `500`) |
 | `subject_id` | string | no | Anonymized patient or subject identifier |
@@ -77,7 +77,7 @@ Upload a waveform file and register it as a new recording.
 
 | Code | Condition |
 |------|-----------|
-| `400` | Unsupported file format (not EDF or CSV) |
+| `400` | Unsupported file format (not EDF, MIT/WFDB, CSV, or Parquet) |
 | `400` | `signal_type` is not `"ecg"` or `"ppg"` |
 | `400` | `sampling_rate` is zero or negative |
 | `500` | File storage write failure |
@@ -288,7 +288,7 @@ Retrieve the full SQI breakdown and raw waveform data for a single segment.
 
 ### POST /api/reports/generate
 
-Trigger asynchronous generation of a quality report for a completed assessment.
+Trigger asynchronous generation of a quality report for a completed assessment. The canonical report is stored as JSON; HTML and PDF are rendered exports from that JSON payload.
 
 **Request:**
 
@@ -305,7 +305,7 @@ Trigger asynchronous generation of a quality report for a completed assessment.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `recording_id` | string (UUID) | yes | Must reference a recording with `status = "completed"` |
-| `format` | string | yes | `"pdf"` or `"html"` |
+| `format` | string | yes | `"json"`, `"html"`, or `"pdf"`; `"json"` returns the canonical payload |
 | `include_waveform_plots` | boolean | no | Render per-segment waveform thumbnails; default `true` |
 
 **Response `202`:**
@@ -325,7 +325,7 @@ Trigger asynchronous generation of a quality report for a completed assessment.
 |------|-----------|
 | `404` | `recording_id` does not exist |
 | `400` | Recording assessment is not in `"completed"` status |
-| `400` | `format` is not `"pdf"` or `"html"` |
+| `400` | `format` is not `"json"`, `"html"`, or `"pdf"` |
 
 ---
 
@@ -339,13 +339,33 @@ Download or retrieve a generated report.
 |-----------|------|-------------|
 | `report_id` | string (UUID) | Report identifier returned by `/api/reports/generate` |
 
-**Response `200` — PDF format:**
+**Response `200` — JSON format:**
+
+```json
+{
+  "report_id": "r9f8e7d6-c5b4-3a21-0987-654321fedcba",
+  "recording_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "format": "json",
+  "generated_at": "2024-11-15T08:35:22Z",
+  "content_json": {
+    "summary": {},
+    "timeline": [],
+    "flagged_segments": [],
+    "recommendations": [],
+    "confidence": "high",
+    "skipped_steps": [],
+    "limitations": []
+  }
+}
+```
+
+**Response `200` — PDF export:**
 
 - Content-Type: `application/pdf`
-- Body: binary PDF file
+- Body: binary PDF file rendered from `content_json`
 - Headers: `Content-Disposition: attachment; filename="quality-report-<recording_id>.pdf"`
 
-**Response `200` — HTML format:**
+**Response `200` — HTML export:**
 
 ```json
 {
@@ -600,7 +620,7 @@ Retrieve the full agent decision log for a recording. Used for transparency, deb
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `stage` | string | no | Filter by stage name (e.g., `"assessing"`) |
-| `tool` | string | no | Filter by tool name (e.g., `"assess_ecg_quality"`) |
+| `tool` | string | no | Filter by tool name (e.g., `"compute_sqi_windowed"`) |
 
 **Response `200`:**
 
@@ -624,10 +644,10 @@ Retrieve the full agent decision log for a recording. Used for transparency, deb
       "step": 2,
       "timestamp": "2024-11-15T08:32:15Z",
       "stage": "assessing",
-      "tool_called": "assess_ecg_quality",
-      "input_summary": "file_path=/storage/recordings/f47ac10b.edf, sampling_rate=500, segment_duration=30, overlap=0.0, split_type=0",
-      "output_summary": "120 segments processed. 98 accepted, 22 rejected. Acceptance rate: 81.7%.",
-      "reasoning": "Signal type is ECG and file is EDF format. Calling assess_ecg_quality with default 30s windows and OUCRU default rule_dict.",
+      "tool_called": "compute_sqi_windowed",
+      "input_summary": "signal=<loaded waveform>, fs=500, signal_type=ecg, window_sec=30",
+      "output_summary": "120 windows processed. 98 passed quality threshold, 22 flagged. Acceptance rate: 81.7%.",
+      "reasoning": "Signal type is ECG. Calling compute_sqi_windowed with 30s windows to produce segment-level quality scores for timeline classification.",
       "duration_ms": 38420,
       "success": true
     },
