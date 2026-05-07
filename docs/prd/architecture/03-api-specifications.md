@@ -1,4 +1,4 @@
-# 10 — API Specifications
+# 03 — API Specifications
 
 [← Back to Index](../00-index.md)
 
@@ -10,14 +10,49 @@
 
 All endpoints are served by the FastAPI backend at base URL `/api`. Request and response bodies use `application/json` unless noted. File uploads use `multipart/form-data`.
 
-### Standard Error Response
+Uploaded files must already be de-identified before upload. The backend stores waveform files and derived outputs, but the agent must not send raw waveform arrays to the LLM; prompts should contain metadata, tool outputs, SQI summaries, and report/chat context only.
+
+---
+
+## Authentication and Authorization
+
+All endpoints except health checks require a valid JWT bearer token issued after Google OAuth sign-in.
+
+| Role | Capabilities |
+|------|--------------|
+| `admin` | Manage users, roles, settings, and all records |
+| `researcher` | Upload recordings, start assessments, view results, generate reports, use chat |
+| `reviewer` | View assigned recordings, reports, logs, and use chat |
+| `readonly` | View accessible recordings and reports only |
+
+Endpoints that modify system-wide settings require `admin`. Assessment, report, and chat endpoints require access to the target recording or assessment job.
+
+### GET /api/auth/me
+
+Return the authenticated user and role list.
+
+**Response `200`:**
+
+```json
+{
+  "user_id": "9f3b4a7e-49f8-4b31-ae32-2f17f97d7f2a",
+  "email": "researcher@example.org",
+  "full_name": "OUCRU Researcher",
+  "roles": ["researcher"]
+}
+```
+
+---
+
+## Standard Error Response
 
 All error responses share this structure:
 
 ```json
 {
   "error": "NotFound",
-  "detail": "Recording with id 'abc123' does not exist."
+  "detail": "Recording with id 'abc123' does not exist.",
+  "request_id": "req-20241115-083211"
 }
 ```
 
@@ -29,9 +64,22 @@ All error responses share this structure:
 | `201` | Created — new resource created |
 | `202` | Accepted — request accepted for asynchronous processing |
 | `400` | Bad Request — invalid parameters or malformed body |
+| `401` | Unauthorized — missing or invalid JWT |
+| `403` | Forbidden — authenticated user lacks required role/access |
 | `404` | Not Found — resource does not exist |
-| `422` | Unprocessable Entity — FastAPI validation error (field type mismatch, missing required field) |
+| `422` | Unprocessable Entity — FastAPI validation error |
 | `500` | Internal Server Error — unexpected backend or agent failure |
+
+---
+
+## Status and Classification Enums
+
+| Entity | Field | Values |
+|--------|-------|--------|
+| Recording | `status` | `uploaded`, `processing`, `completed`, `failed`, `deleted` |
+| Assessment job | `status` | `queued`, `processing`, `completed`, `failed`, `cancelled` |
+| Segment | `classification` | `accept`, `reject`, `pending`, `uncomputable` |
+| Report | `status` | `generating`, `completed`, `failed` |
 
 ---
 
@@ -41,7 +89,9 @@ All error responses share this structure:
 
 ### POST /api/upload
 
-Upload a waveform file and register it as a new recording.
+Upload a de-identified waveform file and register it as a new recording.
+
+**Authorization:** `admin` or `researcher`
 
 **Request:** `multipart/form-data`
 
@@ -49,7 +99,7 @@ Upload a waveform file and register it as a new recording.
 |-------|------|----------|-------------|
 | `file` | binary | yes | EDF, MIT/WFDB bundle, CSV, or Parquet waveform file |
 | `signal_type` | string | yes | `"ecg"` or `"ppg"` |
-| `sampling_rate` | number | yes | Samples per second (e.g., `500`) |
+| `sampling_rate` | number | yes | Samples per second, e.g. `500` |
 | `subject_id` | string | no | Anonymized patient or subject identifier |
 | `device_id` | string | no | Device identifier for provenance tracking |
 | `notes` | string | no | Free-text notes from the researcher |
@@ -64,6 +114,7 @@ Upload a waveform file and register it as a new recording.
   "metadata": {
     "signal_type": "ecg",
     "sampling_rate": 500,
+    "file_format": "edf",
     "file_size_bytes": 14680064,
     "duration_seconds": 3600,
     "subject_id": "SUBJ-042",
@@ -77,16 +128,79 @@ Upload a waveform file and register it as a new recording.
 
 | Code | Condition |
 |------|-----------|
-| `400` | Unsupported file format (not EDF, MIT/WFDB, CSV, or Parquet) |
+| `400` | Unsupported file format |
 | `400` | `signal_type` is not `"ecg"` or `"ppg"` |
 | `400` | `sampling_rate` is zero or negative |
 | `500` | File storage write failure |
 
 ---
 
+### GET /api/recordings
+
+List recordings visible to the authenticated user.
+
+**Authorization:** any authenticated role with recording access
+
+**Query parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `signal_type` | string | no | Filter by `"ecg"` or `"ppg"` |
+| `status` | string | no | Filter by recording status |
+| `limit` | integer | no | Page size; default `50` |
+| `offset` | integer | no | Page offset; default `0` |
+
+**Response `200`:**
+
+```json
+{
+  "items": [
+    {
+      "recording_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "filename": "subject_042_ecg_2024-11-15.edf",
+      "signal_type": "ecg",
+      "status": "completed",
+      "uploaded_at": "2024-11-15T08:32:11Z",
+      "latest_assessment_job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "latest_verdict": "acceptable"
+    }
+  ],
+  "total": 1,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+---
+
+### GET /api/recordings/{recording_id}
+
+Retrieve recording metadata and latest assessment summary.
+
+**Authorization:** any authenticated role with recording access
+
+**Response `200`:**
+
+```json
+{
+  "recording_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "filename": "subject_042_ecg_2024-11-15.edf",
+  "signal_type": "ecg",
+  "sampling_rate": 500,
+  "file_format": "edf",
+  "duration_seconds": 3600,
+  "status": "completed",
+  "latest_assessment_job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+}
+```
+
+---
+
 ### POST /api/assess
 
-Trigger a quality assessment for an uploaded recording. The assessment runs asynchronously; the response returns immediately with a job identifier.
+Trigger a quality assessment for an uploaded recording. The assessment runs asynchronously and creates an `assessment_jobs` row.
+
+**Authorization:** `admin` or `researcher`
 
 **Request:**
 
@@ -102,32 +216,21 @@ Trigger a quality assessment for an uploaded recording. The assessment runs asyn
       "rmssd", "pnn50", "lf_hf_ratio"
     ],
     "rule_dict": {
-      "mean_hr":    { "min": 40, "max": 200 },
-      "sdnn":       { "min": 7.93, "max": 676 },
-      "kurtosis":   { "min": -1.5, "max": 10.0 }
+      "mean_hr": { "min": 40, "max": 200 },
+      "sdnn": { "min": 7.93, "max": 676 },
+      "kurtosis": { "min": -1.5, "max": 10.0 }
     }
   }
 }
 ```
 
-**Fields:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `recording_id` | string (UUID) | yes | ID returned by `/api/upload` |
-| `config.segment_duration` | integer | no | Window length in seconds; default `30` |
-| `config.overlap` | float | no | Fractional overlap `[0.0, 1.0)`; default `0.0` |
-| `config.split_type` | integer | no | Segmentation strategy; `0` = fixed-length; default `0` |
-| `config.sqi_metrics` | array of string | no | Metrics to compute; omit for all available |
-| `config.rule_dict` | object | no | Per-metric thresholds; omit for OUCRU defaults |
-
 **Response `202`:**
 
 ```json
 {
-  "assessment_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "assessment_job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "recording_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-  "status": "processing",
+  "status": "queued",
   "estimated_duration_seconds": 45
 }
 ```
@@ -137,28 +240,62 @@ Trigger a quality assessment for an uploaded recording. The assessment runs asyn
 | Code | Condition |
 |------|-----------|
 | `404` | `recording_id` does not exist |
-| `400` | Recording status is not `"uploaded"` (already assessed or in error state) |
+| `400` | Recording status is not eligible for assessment |
 | `400` | `segment_duration` is zero or negative |
 | `400` | `overlap` is not in range `[0.0, 1.0)` |
 
 ---
 
-### GET /api/results/{recording_id}
+### GET /api/assessment-jobs/{assessment_job_id}
 
-Retrieve the assessment results for a recording. Poll this endpoint to check processing status.
+Retrieve assessment job status and progress. Poll this endpoint while processing.
 
-**Path parameters:**
+**Authorization:** any authenticated role with access to the job's recording
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `recording_id` | string (UUID) | Recording identifier |
-
-**Response `200` (assessment complete):**
+**Response `200` — processing:**
 
 ```json
 {
+  "assessment_job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "recording_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-  "assessment_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "status": "processing",
+  "progress": {
+    "current_stage": "assessing",
+    "segments_processed": 60,
+    "total_segments": 120,
+    "progress_pct": 50.0
+  }
+}
+```
+
+**Response `200` — completed:**
+
+```json
+{
+  "assessment_job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "recording_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "status": "completed",
+  "started_at": "2024-11-15T08:32:15Z",
+  "completed_at": "2024-11-15T08:33:05Z",
+  "total_segments": 120,
+  "processed_segments": 120
+}
+```
+
+---
+
+### GET /api/assessment-jobs/{assessment_job_id}/results
+
+Retrieve completed assessment results for one job.
+
+**Authorization:** any authenticated role with access to the job's recording
+
+**Response `200`:**
+
+```json
+{
+  "assessment_job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "recording_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
   "status": "completed",
   "signal_type": "ecg",
   "assessed_at": "2024-11-15T08:33:05Z",
@@ -166,17 +303,19 @@ Retrieve the assessment results for a recording. Poll this endpoint to check pro
     "total_segments": 120,
     "accepted": 98,
     "rejected": 22,
+    "uncomputable": 0,
     "acceptance_rate": 0.817,
     "overall_quality_score": 0.79,
     "verdict": "acceptable"
   },
   "segments": [
     {
-      "segment_id": "seg-001",
+      "segment_id": "650e8400-e29b-41d4-a716-446655440001",
       "segment_number": 1,
       "start_time": 0,
       "end_time": 30,
-      "classification": "accepted",
+      "classification": "accept",
+      "quality_score": 0.91,
       "sqi_summary": {
         "kurtosis": 3.14,
         "skewness": 0.12,
@@ -185,11 +324,12 @@ Retrieve the assessment results for a recording. Poll this endpoint to check pro
       }
     },
     {
-      "segment_id": "seg-045",
+      "segment_id": "650e8400-e29b-41d4-a716-446655440045",
       "segment_number": 45,
       "start_time": 1320,
       "end_time": 1350,
-      "classification": "rejected",
+      "classification": "reject",
+      "quality_score": 0.23,
       "sqi_summary": {
         "kurtosis": 12.8,
         "skewness": 2.41,
@@ -198,22 +338,8 @@ Retrieve the assessment results for a recording. Poll this endpoint to check pro
       }
     }
   ],
-  "agent_interpretation": "The recording shows good overall quality with an acceptance rate of 81.7%. A cluster of rejected segments was observed between t=1320s and t=1500s (segments 45–50), likely attributable to motion artifact. The final 10 minutes show recovery to baseline quality.",
+  "agent_interpretation": "The recording shows good overall quality with an acceptance rate of 81.7%. A cluster of rejected segments was observed between t=1320s and t=1500s, likely attributable to motion artifact.",
   "escalated": false
-}
-```
-
-**Response `200` (still processing):**
-
-```json
-{
-  "recording_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-  "status": "processing",
-  "progress": {
-    "current_stage": "assessing",
-    "segments_processed": 60,
-    "total_segments": 120
-  }
 }
 ```
 
@@ -221,32 +347,30 @@ Retrieve the assessment results for a recording. Poll this endpoint to check pro
 
 | Code | Condition |
 |------|-----------|
-| `404` | `recording_id` does not exist |
-| `500` | Assessment failed with an internal error; `status` will be `"error"` with `error_detail` |
+| `404` | `assessment_job_id` does not exist |
+| `400` | Assessment is not completed |
+| `500` | Assessment failed internally |
 
 ---
 
-### GET /api/results/{recording_id}/segments/{segment_id}
+### GET /api/assessment-jobs/{assessment_job_id}/segments/{segment_id}
 
-Retrieve the full SQI breakdown and raw waveform data for a single segment.
+Retrieve the full SQI breakdown for one segment. Use `/api/recordings/{recording_id}/waveform` with the segment time range to fetch waveform samples.
 
-**Path parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `recording_id` | string (UUID) | Recording identifier |
-| `segment_id` | string | Segment identifier (e.g., `"seg-045"`) |
+**Authorization:** any authenticated role with access to the job's recording
 
 **Response `200`:**
 
 ```json
 {
-  "segment_id": "seg-045",
+  "segment_id": "650e8400-e29b-41d4-a716-446655440045",
+  "assessment_job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "recording_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
   "segment_number": 45,
   "start_time": 1320,
   "end_time": 1350,
-  "classification": "rejected",
+  "classification": "reject",
+  "quality_score": 0.23,
   "sqi_values": {
     "kurtosis": 12.8,
     "skewness": 2.41,
@@ -272,8 +396,44 @@ Retrieve the full SQI breakdown and raw waveform data for a single segment.
       "operator": "min",
       "description": "Signal-to-noise ratio below minimum threshold — poor signal quality"
     }
+  ]
+}
+```
+
+---
+
+### GET /api/recordings/{recording_id}/waveform
+
+Retrieve raw or downsampled waveform signal data for visualization.
+
+**Authorization:** any authenticated role with recording access
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `start` | float | no | Start time in seconds; default `0` |
+| `end` | float | no | End time in seconds; default full duration |
+| `downsample` | integer | no | Target number of points; default `10000` |
+
+**Response `200`:**
+
+```json
+{
+  "recording_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "signal_type": "ecg",
+  "sampling_rate": 500,
+  "start_time": 0.0,
+  "end_time": 60.0,
+  "channels": [
+    {
+      "name": "Lead II",
+      "data": [0.12, 0.15, 0.18, -0.02]
+    }
   ],
-  "waveform_data": [0.012, 0.015, 0.019, 0.024, "...truncated..."]
+  "downsampled": true,
+  "original_length": 30000,
+  "returned_length": 10000
 }
 ```
 
@@ -282,19 +442,22 @@ Retrieve the full SQI breakdown and raw waveform data for a single segment.
 | Code | Condition |
 |------|-----------|
 | `404` | `recording_id` does not exist |
-| `404` | `segment_id` does not exist for this recording |
+| `400` | `start` is greater than or equal to `end` |
+| `400` | `downsample` is zero or negative |
 
 ---
 
 ### POST /api/reports/generate
 
-Trigger asynchronous generation of a quality report for a completed assessment. The canonical report is stored as JSON; HTML and PDF are rendered exports from that JSON payload.
+Trigger asynchronous generation of a quality report for a completed assessment job. The canonical report is stored as JSON; HTML and PDF are rendered exports from that JSON payload on the `reports` row.
+
+**Authorization:** `admin` or `researcher`
 
 **Request:**
 
 ```json
 {
-  "recording_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "assessment_job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "format": "pdf",
   "include_waveform_plots": true
 }
@@ -304,8 +467,8 @@ Trigger asynchronous generation of a quality report for a completed assessment. 
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `recording_id` | string (UUID) | yes | Must reference a recording with `status = "completed"` |
-| `format` | string | yes | `"json"`, `"html"`, or `"pdf"`; `"json"` returns the canonical payload |
+| `assessment_job_id` | string (UUID) | yes | Must reference a completed assessment job |
+| `format` | string | yes | `"json"`, `"html"`, or `"pdf"` |
 | `include_waveform_plots` | boolean | no | Render per-segment waveform thumbnails; default `true` |
 
 **Response `202`:**
@@ -313,6 +476,7 @@ Trigger asynchronous generation of a quality report for a completed assessment. 
 ```json
 {
   "report_id": "r9f8e7d6-c5b4-3a21-0987-654321fedcba",
+  "assessment_job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "recording_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
   "status": "generating",
   "format": "pdf"
@@ -323,8 +487,8 @@ Trigger asynchronous generation of a quality report for a completed assessment. 
 
 | Code | Condition |
 |------|-----------|
-| `404` | `recording_id` does not exist |
-| `400` | Recording assessment is not in `"completed"` status |
+| `404` | `assessment_job_id` does not exist |
+| `400` | Assessment job is not `"completed"` |
 | `400` | `format` is not `"json"`, `"html"`, or `"pdf"` |
 
 ---
@@ -333,11 +497,13 @@ Trigger asynchronous generation of a quality report for a completed assessment. 
 
 Download or retrieve a generated report.
 
-**Path parameters:**
+**Authorization:** any authenticated role with access to the report's recording
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `report_id` | string (UUID) | Report identifier returned by `/api/reports/generate` |
+**Query parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `format` | string | no | `"json"`, `"html"`, or `"pdf"`; defaults to stored report format |
 
 **Response `200` — JSON format:**
 
@@ -345,6 +511,7 @@ Download or retrieve a generated report.
 {
   "report_id": "r9f8e7d6-c5b4-3a21-0987-654321fedcba",
   "recording_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "assessment_job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "format": "json",
   "generated_at": "2024-11-15T08:35:22Z",
   "content_json": {
@@ -371,6 +538,7 @@ Download or retrieve a generated report.
 {
   "report_id": "r9f8e7d6-c5b4-3a21-0987-654321fedcba",
   "recording_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "assessment_job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "format": "html",
   "generated_at": "2024-11-15T08:35:22Z",
   "content_html": "<html><body><h1>Quality Assessment Report</h1>...</body></html>"
@@ -386,25 +554,20 @@ Download or retrieve a generated report.
 }
 ```
 
-**Errors:**
-
-| Code | Condition |
-|------|-----------|
-| `404` | `report_id` does not exist |
-| `500` | Report generation failed |
-
 ---
 
 ### GET /api/dashboard/summary
 
 Retrieve high-level summary statistics for the dashboard home view.
 
+**Authorization:** any authenticated role with dashboard access
+
 **Query parameters:**
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `days` | integer | no | Lookback window in days; default `30` |
-| `signal_type` | string | no | Filter by `"ecg"` or `"ppg"`; omit for all |
+| `signal_type` | string | no | Filter by `"ecg"` or `"ppg"` |
 
 **Response `200`:**
 
@@ -415,25 +578,16 @@ Retrieve high-level summary statistics for the dashboard home view.
   "recent_assessments": [
     {
       "recording_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "assessment_job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       "subject_id": "SUBJ-042",
       "signal_type": "ecg",
       "assessed_at": "2024-11-15T08:33:05Z",
       "acceptance_rate": 0.817,
       "verdict": "acceptable"
-    },
-    {
-      "recording_id": "c3d2e1f0-a9b8-7654-3210-abcdef012345",
-      "subject_id": "SUBJ-031",
-      "signal_type": "ppg",
-      "assessed_at": "2024-11-14T14:10:00Z",
-      "acceptance_rate": 0.312,
-      "verdict": "poor"
     }
   ],
   "quality_trends": [
-    { "date": "2024-11-09", "mean_acceptance_rate": 0.85, "assessments_count": 5 },
-    { "date": "2024-11-10", "mean_acceptance_rate": 0.81, "assessments_count": 7 },
-    { "date": "2024-11-15", "mean_acceptance_rate": 0.76, "assessments_count": 4 }
+    { "date": "2024-11-09", "mean_acceptance_rate": 0.85, "assessments_count": 5 }
   ],
   "alerts": [
     {
@@ -441,6 +595,7 @@ Retrieve high-level summary statistics for the dashboard home view.
       "type": "low_quality",
       "severity": "high",
       "recording_id": "c3d2e1f0-a9b8-7654-3210-abcdef012345",
+      "assessment_job_id": "d4e3f2a1-b0c9-8765-4321-fedcba987654",
       "message": "Recording SUBJ-031 PPG has acceptance rate of 31.2% — flagged for human review.",
       "created_at": "2024-11-14T14:10:15Z",
       "acknowledged": false
@@ -449,29 +604,19 @@ Retrieve high-level summary statistics for the dashboard home view.
 }
 ```
 
-**Errors:**
-
-| Code | Condition |
-|------|-----------|
-| `400` | `days` is zero or negative |
-| `500` | Database query failure |
-
 ---
 
-### GET /api/dashboard/timeline/{recording_id}
+### GET /api/dashboard/timeline/{assessment_job_id}
 
 Retrieve per-segment quality timeline data for the waveform monitoring view.
 
-**Path parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `recording_id` | string (UUID) | Recording identifier |
+**Authorization:** any authenticated role with access to the job's recording
 
 **Response `200`:**
 
 ```json
 {
+  "assessment_job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "recording_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
   "signal_type": "ecg",
   "total_segments": 120,
@@ -481,110 +626,112 @@ Retrieve per-segment quality timeline data for the waveform monitoring view.
       "segment_number": 1,
       "start_time": 0,
       "end_time": 30,
-      "classification": "accepted",
+      "classification": "accept",
       "quality_score": 0.91
     },
     {
       "segment_number": 45,
       "start_time": 1320,
       "end_time": 1350,
-      "classification": "rejected",
+      "classification": "reject",
       "quality_score": 0.23
-    },
-    {
-      "segment_number": 120,
-      "start_time": 3570,
-      "end_time": 3600,
-      "classification": "accepted",
-      "quality_score": 0.87
     }
   ]
 }
 ```
 
-**Errors:**
-
-| Code | Condition |
-|------|-----------|
-| `404` | `recording_id` does not exist |
-| `400` | Assessment not yet completed for this recording |
-
 ---
 
-### GET /api/recordings/{recording_id}/waveform
+### POST /api/conversations
 
-Retrieve raw or downsampled waveform signal data for visualization.
+Create a conversation grounded in a recording, assessment job, and optionally a report.
 
-**Query Parameters:**
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `start` | float | No | Start time in seconds (default: 0) |
-| `end` | float | No | End time in seconds (default: full duration) |
-| `downsample` | integer | No | Target number of points (default: 10000). Raw data returned if omitted or if raw length < target. |
-
-**Response (200):**
-
-```json
-{
-  "recording_id": "abc-123",
-  "signal_type": "ecg",
-  "sampling_rate": 500,
-  "start_time": 0.0,
-  "end_time": 60.0,
-  "channels": [
-    {
-      "name": "Lead II",
-      "data": [0.12, 0.15, 0.18, -0.02, "..."]
-    }
-  ],
-  "downsampled": true,
-  "original_length": 30000,
-  "returned_length": 10000
-}
-```
-
-**Errors:**
-
-| Code | Condition |
-|------|-----------|
-| `404` | `recording_id` does not exist |
-| `400` | `start` is greater than or equal to `end` |
-| `400` | Assessment not yet completed for this recording |
-
----
-
-### POST /api/chat
-
-Submit a natural-language question about a recording to the agent chatbot.
+**Authorization:** `admin`, `researcher`, or `reviewer` with access to the target recording
 
 **Request:**
 
 ```json
 {
   "recording_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-  "message": "Why was segment 45 rejected?"
+  "assessment_job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "report_id": null,
+  "title": "Segment quality discussion"
 }
 ```
 
-**Fields:**
+**Response `201`:**
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `recording_id` | string (UUID) | yes | Context recording for the question |
-| `message` | string | yes | Natural-language question from the researcher or clinician |
-| `conversation_id` | string | no | For multi-turn conversations; omit for new conversation |
+```json
+{
+  "conversation_id": "0f24d1fb-8817-4b68-8e6e-76af5d2df4b1",
+  "recording_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "assessment_job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "title": "Segment quality discussion",
+  "created_at": "2024-11-15T08:40:00Z"
+}
+```
+
+---
+
+### GET /api/conversations/{conversation_id}/messages
+
+Retrieve chat history for a conversation.
+
+**Authorization:** any authenticated role with access to the conversation's recording
 
 **Response `200`:**
 
 ```json
 {
-  "conversation_id": "conv-abc123",
-  "response": "Segment 45 (t=1320s to t=1350s) was rejected because two SQI metrics fell outside acceptable thresholds: kurtosis was 12.8 (maximum allowed: 10.0), indicating a high-amplitude spike artifact, and SNR was 4.2 (minimum required: 8.0), indicating a poor signal-to-noise ratio. Both failures are consistent with motion artifact — the patient may have moved during this window. The surrounding segments (44 and 46) were accepted with normal SQI values.",
+  "conversation_id": "0f24d1fb-8817-4b68-8e6e-76af5d2df4b1",
+  "messages": [
+    {
+      "message_id": "5d7a0e97-5ec5-41b6-859c-93d29b4a84b6",
+      "role": "user",
+      "content": "Why was segment 45 rejected?",
+      "created_at": "2024-11-15T08:41:00Z"
+    },
+    {
+      "message_id": "6f3c4865-391d-4f20-9316-d5e73c5779f1",
+      "role": "assistant",
+      "content": "Segment 45 was rejected because kurtosis and SNR fell outside configured thresholds.",
+      "sources": [
+        { "type": "segment_detail", "segment_id": "650e8400-e29b-41d4-a716-446655440045" }
+      ],
+      "created_at": "2024-11-15T08:41:02Z"
+    }
+  ]
+}
+```
+
+---
+
+### POST /api/conversations/{conversation_id}/messages
+
+Submit a natural-language question about a recording or assessment job to the agent chatbot.
+
+**Authorization:** `admin`, `researcher`, or `reviewer` with access to the conversation's recording
+
+**Request:**
+
+```json
+{
+  "message": "Why was segment 45 rejected?"
+}
+```
+
+**Response `200`:**
+
+```json
+{
+  "conversation_id": "0f24d1fb-8817-4b68-8e6e-76af5d2df4b1",
+  "user_message_id": "5d7a0e97-5ec5-41b6-859c-93d29b4a84b6",
+  "assistant_message_id": "6f3c4865-391d-4f20-9316-d5e73c5779f1",
+  "response": "Segment 45 (t=1320s to t=1350s) was rejected because two SQI metrics fell outside acceptable thresholds: kurtosis was 12.8 (maximum allowed: 10.0), and SNR was 4.2 (minimum required: 8.0).",
   "sources": [
     {
       "type": "segment_detail",
-      "segment_id": "seg-045",
+      "segment_id": "650e8400-e29b-41d4-a716-446655440045",
       "segment_number": 45
     },
     {
@@ -599,33 +746,51 @@ Submit a natural-language question about a recording to the agent chatbot.
 
 | Code | Condition |
 |------|-----------|
-| `404` | `recording_id` does not exist or assessment not completed |
+| `404` | `conversation_id` does not exist |
 | `400` | `message` is empty |
 | `500` | LLM inference failure |
 
 ---
 
-### GET /api/agent/logs/{recording_id}
+### POST /api/chat
 
-Retrieve the full agent decision log for a recording. Used for transparency, debugging, and clinical audit.
+MVP convenience endpoint for one-shot or multi-turn chat. If `conversation_id` is omitted, the backend creates a conversation before storing `chat_messages` rows.
 
-**Path parameters:**
+**Authorization:** `admin`, `researcher`, or `reviewer` with access to the target recording
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `recording_id` | string (UUID) | Recording identifier |
+**Request:**
+
+```json
+{
+  "recording_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "assessment_job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "conversation_id": null,
+  "message": "Why was segment 45 rejected?"
+}
+```
+
+**Response `200`:** same as `POST /api/conversations/{conversation_id}/messages`.
+
+---
+
+### GET /api/assessment-jobs/{assessment_job_id}/logs
+
+Retrieve the full agent decision log for an assessment job.
+
+**Authorization:** any authenticated role with access to the job's recording
 
 **Query parameters:**
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `stage` | string | no | Filter by stage name (e.g., `"assessing"`) |
-| `tool` | string | no | Filter by tool name (e.g., `"compute_sqi_windowed"`) |
+| `stage` | string | no | Filter by stage name, e.g. `"assessing"` |
+| `tool` | string | no | Filter by tool name, e.g. `"compute_sqi_windowed"` |
 
 **Response `200`:**
 
 ```json
 {
+  "assessment_job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "recording_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
   "total_steps": 12,
   "logs": [
@@ -636,7 +801,7 @@ Retrieve the full agent decision log for a recording. Used for transparency, deb
       "tool_called": null,
       "input_summary": null,
       "output_summary": null,
-      "reasoning": "Received recording f47ac10b. Signal type: ECG. Sampling rate: 500 Hz. File format: EDF. No preprocessing flag set — proceeding directly to full ECG pipeline.",
+      "reasoning": "Received recording f47ac10b. Signal type: ECG. Sampling rate: 500 Hz. File format: EDF.",
       "duration_ms": null,
       "success": true
     },
@@ -646,32 +811,40 @@ Retrieve the full agent decision log for a recording. Used for transparency, deb
       "stage": "assessing",
       "tool_called": "compute_sqi_windowed",
       "input_summary": "signal=<loaded waveform>, fs=500, signal_type=ecg, window_sec=30",
-      "output_summary": "120 windows processed. 98 passed quality threshold, 22 flagged. Acceptance rate: 81.7%.",
-      "reasoning": "Signal type is ECG. Calling compute_sqi_windowed with 30s windows to produce segment-level quality scores for timeline classification.",
+      "output_summary": "120 windows processed. 98 accepted, 22 rejected. Acceptance rate: 81.7%.",
+      "reasoning": "Signal type is ECG. Calling compute_sqi_windowed with 30s windows to produce segment-level quality scores.",
       "duration_ms": 38420,
-      "success": true
-    },
-    {
-      "step": 3,
-      "timestamp": "2024-11-15T08:32:54Z",
-      "stage": "interpreting",
-      "tool_called": null,
-      "input_summary": null,
-      "output_summary": null,
-      "reasoning": "Acceptance rate of 81.7% is above the 40% escalation threshold. Rejected segments 45–50 are consecutive, suggesting a localized artifact event rather than systematic device failure. No escalation required. Proceeding to report generation.",
-      "duration_ms": null,
       "success": true
     }
   ]
 }
 ```
 
-**Errors:**
+---
 
-| Code | Condition |
-|------|-----------|
-| `404` | `recording_id` does not exist |
-| `404` | No agent logs exist for this recording (assessment not started) |
+### GET /api/settings/thresholds
+
+Retrieve current default SQI classification thresholds.
+
+**Authorization:** any authenticated role
+
+**Response `200`:**
+
+```json
+{
+  "thresholds": {
+    "mean_hr": { "min": 40, "max": 200 },
+    "sdnn": { "min": 7.93, "max": 676 },
+    "rmssd": { "min": 5.0, "max": 300 },
+    "pnn50": { "min": 0.0, "max": 1.0 },
+    "kurtosis": { "min": -1.5, "max": 10.0 },
+    "skewness": { "min": -3.0, "max": 3.0 },
+    "snr": { "min": 8.0, "max": null },
+    "lf_hf_ratio": { "min": 0.2, "max": 5.0 }
+  },
+  "updated_at": "2024-11-15T09:00:00Z"
+}
+```
 
 ---
 
@@ -679,26 +852,24 @@ Retrieve the full agent decision log for a recording. Used for transparency, deb
 
 Update the default SQI classification thresholds used when no `rule_dict` is provided in `/api/assess`.
 
+**Authorization:** `admin`
+
 **Request:**
 
 ```json
 {
   "thresholds": {
-    "mean_hr":    { "min": 40,    "max": 200   },
-    "sdnn":       { "min": 7.93,  "max": 676   },
-    "rmssd":      { "min": 5.0,   "max": 300   },
-    "pnn50":      { "min": 0.0,   "max": 1.0   },
-    "kurtosis":   { "min": -1.5,  "max": 10.0  },
-    "skewness":   { "min": -3.0,  "max": 3.0   },
-    "snr":        { "min": 8.0,   "max": null  },
-    "lf_hf_ratio":{ "min": 0.2,   "max": 5.0  }
+    "mean_hr": { "min": 40, "max": 200 },
+    "sdnn": { "min": 7.93, "max": 676 },
+    "rmssd": { "min": 5.0, "max": 300 },
+    "pnn50": { "min": 0.0, "max": 1.0 },
+    "kurtosis": { "min": -1.5, "max": 10.0 },
+    "skewness": { "min": -3.0, "max": 3.0 },
+    "snr": { "min": 8.0, "max": null },
+    "lf_hf_ratio": { "min": 0.2, "max": 5.0 }
   }
 }
 ```
-
-**Fields:**
-
-Each key in `thresholds` is a metric name. Each value is an object with optional `min` and/or `max` fields (both accept `null` to indicate "no bound on this side").
 
 **Response `200`:**
 
@@ -706,7 +877,7 @@ Each key in `thresholds` is a metric name. Each value is an object with optional
 {
   "status": "updated",
   "updated_at": "2024-11-15T09:00:00Z",
-  "updated_by": "admin",
+  "updated_by": "9f3b4a7e-49f8-4b31-ae32-2f17f97d7f2a",
   "metrics_updated": [
     "mean_hr", "sdnn", "rmssd", "pnn50",
     "kurtosis", "skewness", "snr", "lf_hf_ratio"
@@ -721,4 +892,5 @@ Each key in `thresholds` is a metric name. Each value is an object with optional
 | `400` | A metric name is not recognized |
 | `400` | `min` is greater than `max` for any metric |
 | `400` | `thresholds` object is empty |
+| `403` | Authenticated user is not an admin |
 | `500` | Settings persistence failure |
