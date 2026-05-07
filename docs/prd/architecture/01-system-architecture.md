@@ -1,6 +1,6 @@
 # 08 — System Architecture
 
-[← Back to Index](00-index.md)
+[← Back to Index](../00-index.md)
 
 ---
 
@@ -199,7 +199,7 @@ A clinician or researcher can ask natural-language questions about the assessmen
 | API contract | REST/JSON | Simple, stateless, and easy to test; no need for GraphQL complexity at this project scale |
 | Orchestration | Docker Compose | Minimal operational overhead for a capstone project; reproducible local environments |
 
-The REST API boundary means the frontend and backend teams can work independently as long as the API contract (defined in `10-api-specifications.md`) is respected. Either service can be replaced or upgraded without touching the other.
+The REST API boundary means the frontend and backend teams can work independently as long as the API contract (defined in [API Specifications](03-api-specifications.md)) is respected. Either service can be replaced or upgraded without touching the other.
 
 ---
 
@@ -236,4 +236,4 @@ All services communicate over a shared Docker bridge network (`vital-network`). 
 | Database | Cloud SQL (PostgreSQL 15) | Managed, automated backups |
 | File Storage | Google Cloud Storage (GCS) | Uploaded recordings and generated reports |
 
-Budget: $2,000–$3,000 GCP credits (expires August 23, 2026). See [Tech Stack](13-tech-stack.md) for detailed cost analysis.
+Budget: $2,000–$3,000 GCP credits (expires August 23, 2026). See [Tech Stack](05-tech-stack.md) for detailed cost analysis.

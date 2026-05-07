@@ -1,6 +1,6 @@
 # 17. Acceptance Criteria
 
-[← Back to Index](00-index.md)
+[← Back to Index](../00-index.md)
 
 ---
 

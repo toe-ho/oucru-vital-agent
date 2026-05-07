@@ -1,6 +1,6 @@
 # 01 — Executive Summary
 
-[← Back to Index](00-index.md)
+[← Back to Index](../00-index.md)
 
 ---
 

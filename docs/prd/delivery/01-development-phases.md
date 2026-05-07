@@ -1,6 +1,6 @@
 # 14 — Development Phases
 
-[← Back to Index](00-index.md)
+[← Back to Index](../00-index.md)
 
 ---
 
@@ -10,7 +10,7 @@ The project spans **16 weeks** (team-proposed timeline — to be confirmed with 
 
 ---
 
-> **Scope Note:** This development plan addresses waveform data (ECG, PPG) only. Imaging data quality monitoring is deferred to future phases, per project scope decisions documented in [Goals and Non-Goals](../prd/03-goals-and-non-goals.md).
+> **Scope Note:** This development plan addresses waveform data (ECG, PPG) only. Imaging data quality monitoring is deferred to future phases, per project scope decisions documented in [Goals and Non-Goals](../overview/03-goals-and-non-goals.md).
 
 ---
 
@@ -69,7 +69,7 @@ Phase 5 (Delivery & Core Features)
 - [ ] **CI/CD pipeline**: Configure GitHub Actions with jobs: `lint` (Ruff + ESLint), `test` (Pytest + frontend tests), `build` (Docker image builds). Pipeline must pass before merge to `main`.
 - [ ] **OUCRU signal-tool integration**: Install required OUCRU signal-processing dependencies directly in the backend container (Python 3.11). Run sample scripts against provided ECG/PPG CSV or Parquet files. Verify the registered tools (`load_signal_file`, `compute_sqi`, `compute_sqi_windowed`, `preprocess_ppg`, `extract_hrv_features`, `estimate_spo2`, `extract_ppg_dc_layer`, `check_clinical_thresholds`) work with sample data on Python 3.11. Write an `oucru_signal_tools_smoke_test.py` that calls the main loading and SQI functions and asserts expected output shapes.
 - [ ] **FastAPI scaffolding**: Implement base app structure — routers, dependency injection, CORS config, health check endpoint (`GET /health`). Configure Pydantic Settings for environment variables.
-- [ ] **Database setup**: Write SQLAlchemy models for all 6 tables (see `11-data-model.md`). Create Alembic migration files. Apply migrations via `alembic upgrade head` on container start.
+- [ ] **Database setup**: Write SQLAlchemy models from [Data Model](../architecture/04-data-model.md). Create Alembic migration files. Apply migrations via `alembic upgrade head` on container start.
 - [ ] **Frontend scaffolding**: Initialize Next.js + React + TypeScript project. Configure Tailwind CSS. Set up App Router routes for all 6 screens. Implement global navigation bar component.
 - [ ] **Basic file upload endpoint**: `POST /api/upload` — accepts multipart file, validates extension and size, stores to filesystem, creates `recordings` row with status `uploaded`.
 
@@ -211,7 +211,7 @@ A polished, deployed prototype accessible via a public Cloud Run URL. Chatbot in
 
 ## Risk Register
 
-See [Risk Assessment](15-risk-assessment.md) for the full risk register. The authoritative list of risks, likelihood ratings, mitigations, and contingencies is maintained there.
+See [Risk Assessment](02-risk-assessment.md) for the full risk register. The authoritative list of risks, likelihood ratings, mitigations, and contingencies is maintained there.
 
 ---
 

@@ -1,6 +1,6 @@
 # 11 — Data Model
 
-[← Back to Index](00-index.md)
+[← Back to Index](../00-index.md)
 
 ---
 

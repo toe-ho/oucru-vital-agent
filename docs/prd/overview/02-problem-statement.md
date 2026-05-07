@@ -1,6 +1,6 @@
 # 02 — Problem Statement
 
-[← Back to Index](00-index.md)
+[← Back to Index](../00-index.md)
 
 ---
 

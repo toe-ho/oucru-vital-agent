@@ -1,6 +1,6 @@
 # 09 — Agent Design
 
-[← Back to Index](00-index.md)
+[← Back to Index](../00-index.md)
 
 ---
 

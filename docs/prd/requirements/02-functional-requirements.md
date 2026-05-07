@@ -1,6 +1,6 @@
 # 06 — Functional Requirements
 
-[← Back to Index](00-index.md)
+[← Back to Index](../00-index.md)
 
 ---
 

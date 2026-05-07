@@ -1,6 +1,6 @@
 # 13 — Tech Stack
 
-[← Back to Index](00-index.md)
+[← Back to Index](../00-index.md)
 
 ---
 

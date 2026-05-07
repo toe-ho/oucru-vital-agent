@@ -1,6 +1,6 @@
 # 05 — User Stories
 
-[← Back to Index](00-index.md)
+[← Back to Index](../00-index.md)
 
 ---
 

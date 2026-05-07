@@ -1,6 +1,6 @@
 # 04 — User Personas
 
-[← Back to Index](00-index.md)
+[← Back to Index](../00-index.md)
 
 ---
 
