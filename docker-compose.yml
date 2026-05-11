@@ -1,0 +1,71 @@
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000/api
+    depends_on:
+      - backend
+    networks:
+      - vital-network
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      CONFIG_YAML_PATH: /app/config.yaml
+    volumes:
+      - ./uploads:/app/uploads
+      - ./config.yaml:/app/config.yaml:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    networks:
+      - vital-network
+    restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-oucru}
+      POSTGRES_USER: ${POSTGRES_USER:-oucru}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-oucru}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-oucru}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vital-network
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    entrypoint: >
+      sh -c "ollama serve &
+             sleep 5 &&
+             ollama list | grep -q qwen3:8b || ollama pull qwen3:8b &&
+             wait"
+    networks:
+      - vital-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  ollama_data:
+
+networks:
+  vital-network:
+    driver: bridge

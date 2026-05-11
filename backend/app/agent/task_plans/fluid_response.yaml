@@ -1,0 +1,106 @@
+# Task plan: hemodynamic monitoring / fluid responsiveness
+# Relevant for ICU infectious disease patients (dengue, sepsis).
+# Cross-validates PPG DC layer with ECG for fluid responsiveness estimation.
+
+name: fluid_response_monitoring
+description: >
+  Assess fluid responsiveness and vasopressor titration guidance from
+  non-invasive optical hemodynamic signals (PPG DC layer) cross-validated
+  with ECG. Designed for ICU infectious disease patients.
+
+inputs:
+  - name: ppg_path
+    type: str
+    required: true
+  - name: ecg_path
+    type: str
+    required: false
+  - name: fs_ppg
+    type: int
+    default: 100
+  - name: fs_ecg
+    type: int
+    default: 500
+  - name: patient_id
+    type: str
+    required: false
+
+steps:
+  - id: load_signals
+    description: Load PPG and ECG signals. ECG is optional but improves accuracy.
+    tool: load_signal_file
+    on_fail: abort
+
+  - id: ppg_sqi
+    description: >
+      Compute windowed SQI for the PPG signal. Reject windows with SQI < 0.5
+      before hemodynamic analysis.
+    tool: compute_sqi_windowed
+    depends_on: [load_signals]
+    params:
+      signal_type: ppg
+      window_sec: 30
+
+  - id: ppg_dc_extraction
+    description: >
+      Extract PPG DC component (low-frequency baseline trend, 0–0.5 Hz).
+      Reflects venous volume changes and peripheral vascular tone.
+    tool: extract_ppg_dc_layer
+    depends_on: [load_signals]
+
+  - id: ppg_preprocess
+    description: >
+      Preprocess PPG AC component: bandpass filter, normalize, detect systolic peaks.
+      Extracts pulse amplitude variation (PAV) and perfusion index (PI).
+    tool: preprocess_ppg
+    depends_on: [ppg_dc_extraction]
+
+  - id: hrv_features
+    description: >
+      Extract HRV features from PPG RR intervals.
+      Respiratory sinus arrhythmia (RSA) indicates respiratory-cardiac coupling.
+    tool: extract_hrv_features
+    depends_on: [ppg_preprocess]
+    condition: "ppg_preprocess produced rr_intervals_ms"
+
+  - id: spo2_estimate
+    description: >
+      Estimate SpO2 from red/IR channels if available.
+      Perfusion index from SpO2 provides additional hemodynamic context.
+    tool: estimate_spo2
+    depends_on: [load_signals]
+    condition: "red and IR channels are available"
+
+  - id: threshold_check
+    description: >
+      Flag any values outside clinical thresholds: low SpO2, extreme HR,
+      poor SQI. Critical flags require immediate escalation.
+    tool: check_clinical_thresholds
+    depends_on: [hrv_features, spo2_estimate, ppg_sqi]
+
+output_schema:
+  patient_id: str | null
+  timestamp: str
+  ppg_dc_trend: list[float]          # downsampled DC trend (10 Hz)
+  mean_dc: float
+  dc_variance: float
+  perfusion_index: float | null      # from SpO2 tool if available
+  heart_rate_bpm: float | null
+  hrv:
+    sdnn_ms: float | null
+    rmssd_ms: float | null
+    lf_hf_ratio: float | null
+  spo2_pct: float | null
+  sqi:
+    mean_sqi: float
+    pct_good_windows: float
+  flags: list[str]
+  confidence: str                    # "high" | "medium" | "low"
+  notes: str
+
+interpretation:
+  escalate_if_acceptance_rate_below: 0.40
+  verdict_thresholds:
+    acceptable: 0.80
+    marginal: 0.60
+    poor: 0.0

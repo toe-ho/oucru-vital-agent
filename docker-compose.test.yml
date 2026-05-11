@@ -1,0 +1,35 @@
+services:
+  db-test:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: oucru_test
+      POSTGRES_USER: oucru
+      POSTGRES_PASSWORD: oucru
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oucru"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend-test:
+    build: ./backend
+    depends_on:
+      db-test:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://oucru:oucru@db-test:5432/oucru_test
+      SECRET_KEY: test-secret-key
+    command: pytest tests/ --cov=app --cov-fail-under=80 --ignore=tests/performance -v
+    volumes:
+      - ./backend:/app
+      - ./config.yaml:/app/config.yaml:ro
+
+  frontend-test:
+    build: ./frontend
+    command: npx vitest run --coverage
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next

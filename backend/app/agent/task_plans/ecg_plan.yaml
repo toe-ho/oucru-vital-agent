@@ -1,0 +1,108 @@
+# Task plan: ECG signal analysis
+# Injected into the agent system prompt as workflow context.
+
+name: ecg_plan
+description: >
+  Analyze an ECG (electrocardiography) signal from a wearable or clinical device.
+  Validate signal quality, detect R-peaks, extract HRV features, and produce a
+  structured report. Flag any clinical concerns based on configured thresholds.
+
+inputs:
+  - name: signal_path
+    type: str
+    description: Path to the ECG signal file (CSV, Parquet, or WFDB record)
+    required: true
+  - name: fs
+    type: int
+    description: Sampling frequency in Hz (typically 250–500 Hz for ECG)
+    required: false
+    default: 500
+  - name: column
+    type: str
+    description: Column name for the ECG channel (e.g. "ecg", "II", "V1")
+    required: false
+    default: ecg
+  - name: patient_id
+    type: str
+    required: false
+
+steps:
+  - id: load_signal
+    description: Load the raw ECG signal from file (CSV, Parquet, or WFDB).
+    tool: load_signal_file
+    on_fail: abort
+    params:
+      column: ecg
+
+  - id: check_sqi
+    description: >
+      Compute overall SQI for the ECG signal using vital-sqi ECG metrics
+      (kurtosis, skewness, flatline detection, clipping).
+      If SQI < threshold, mark confidence as low but continue.
+    tool: compute_sqi
+    depends_on: [load_signal]
+    on_fail: flag_and_continue
+    params:
+      signal_type: ecg
+
+  - id: windowed_sqi
+    description: >
+      Compute per-window SQI over the full ECG recording (30s windows, no overlap).
+      Identify clean segments for R-peak detection and HRV analysis.
+      Reject windows with SQI < 0.5 or any failed quality rule.
+    tool: compute_sqi_windowed
+    depends_on: [load_signal]
+    params:
+      signal_type: ecg
+      window_sec: 30
+      step_sec: 30
+
+  - id: extract_hrv
+    description: >
+      Extract HRV features from RR intervals derived from ECG R-peaks.
+      Compute: SDNN, RMSSD, pNN50 (time domain) and LF, HF, LF/HF ratio
+      (frequency domain). Use only clean windows from windowed_sqi.
+    tool: extract_hrv_features
+    depends_on: [windowed_sqi]
+    condition: "at least 10 RR intervals available from clean ECG segments"
+
+  - id: check_thresholds
+    description: >
+      Compare HR and SQI against clinical thresholds.
+      Flag: bradycardia (HR < 40), tachycardia (HR > 200), poor SQI.
+    tool: check_clinical_thresholds
+    depends_on: [extract_hrv, check_sqi]
+
+output_schema:
+  patient_id: str | null
+  timestamp: str                  # ISO 8601
+  signal_path: str
+  fs: int
+  sqi:
+    score: float                  # overall SQI 0–1
+    quality: str                  # "good" | "acceptable" | "poor"
+    total_windows: int
+    accepted_windows: int
+    acceptance_rate: float        # fraction of clean windows
+    pct_good_windows: float
+  hrv:
+    mean_rr_ms: float
+    sdnn_ms: float
+    rmssd_ms: float
+    pnn50_pct: float
+    mean_hr_bpm: float
+    lf_power: float | null
+    hf_power: float | null
+    lf_hf_ratio: float | null
+    n_intervals: int
+    analysis_duration_sec: float
+  flags: list[str]
+  confidence: str                 # "high" | "medium" | "low"
+  notes: str
+
+interpretation:
+  escalate_if_acceptance_rate_below: 0.40
+  verdict_thresholds:
+    acceptable: 0.80
+    marginal: 0.60
+    poor: 0.0

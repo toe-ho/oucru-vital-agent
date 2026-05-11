@@ -1,0 +1,41 @@
+# Web framework
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-multipart==0.0.12
+
+# Database
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+
+# Config
+pydantic-settings==2.6.1
+python-dotenv==1.0.1
+pyyaml==6.0.2
+
+# Agent
+smolagents>=1.0.0
+ollama>=0.3.0
+
+# Auth
+python-jose[cryptography]==3.3.0
+httpx==0.27.2
+
+# Signal processing
+# vitalSQI-toolkit  -- install locally: pip install -e /path/to/vital-sqi
+# vitalDSP          -- install locally: pip install -e /path/to/vitalDSP
+numpy==1.26.4
+scipy==1.14.1
+neurokit2==0.2.10
+wfdb==4.1.2
+pandas==2.2.3
+pyarrow==18.0.0
+pyedflib==0.1.30
+
+# Report generation
+weasyprint==62.3
+jinja2==3.1.4
+matplotlib==3.9.3
+
+# Utilities
+requests==2.32.3
