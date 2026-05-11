@@ -1,0 +1,27 @@
+ci:
+  collect:
+    url:
+      - http://localhost:3000/
+      - http://localhost:3000/dashboard
+    numberOfRuns: 2
+    startServerCommand: "cd vital-agent/frontend && npm start"
+    startServerReadyPattern: "ready on"
+
+  assert:
+    preset: lighthouse:no-pwa
+    assertions:
+      first-contentful-paint:
+        - error
+        - maxNumericValue: 3000
+      interactive:
+        - error
+        - maxNumericValue: 3000
+      speed-index:
+        - warn
+        - maxNumericValue: 4000
+      total-blocking-time:
+        - warn
+        - maxNumericValue: 500
+
+  upload:
+    target: temporary-public-storage

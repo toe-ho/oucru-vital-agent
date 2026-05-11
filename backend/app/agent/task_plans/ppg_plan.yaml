@@ -1,0 +1,116 @@
+# Task plan: PPG signal analysis
+# Injected into the agent system prompt as workflow context.
+# The LLM reasons about which steps apply based on the prompt and data available.
+
+name: ppg_plan
+description: >
+  Analyze a PPG (photoplethysmography) signal from a wearable device.
+  Validate signal quality, extract hemodynamic features, and produce a
+  structured report. Flag any clinical concerns based on configured thresholds.
+
+inputs:
+  - name: signal_path
+    type: str
+    description: Path to the PPG signal file (CSV or Parquet)
+    required: true
+  - name: fs
+    type: int
+    description: Sampling frequency in Hz
+    required: false
+    default: 100
+  - name: patient_id
+    type: str
+    required: false
+
+steps:
+  - id: load_signal
+    description: Load the raw PPG signal from file.
+    tool: load_signal_file
+    on_fail: abort
+
+  - id: check_sqi
+    description: >
+      Compute overall SQI using vital-sqi. If SQI < threshold (see config),
+      flag as poor quality. Do NOT abort — still attempt analysis but mark
+      confidence as low.
+    tool: compute_sqi
+    on_fail: flag_and_continue
+
+  - id: windowed_sqi
+    description: >
+      Compute per-window SQI over the full recording (30s windows, 10s step).
+      Identifies which segments are suitable for clinical analysis.
+    tool: compute_sqi_windowed
+    depends_on: [load_signal]
+    params:
+      signal_type: ppg
+      window_sec: 30
+      step_sec: 10
+
+  - id: preprocess
+    description: >
+      Apply bandpass filter (0.5–8 Hz), remove baseline wander, detect peaks.
+    tool: preprocess_ppg
+    depends_on: [load_signal]
+    on_fail: flag_and_continue
+
+  - id: extract_hrv
+    description: >
+      Extract time-domain HRV (mean RR, SDNN, RMSSD, pNN50) and
+      frequency-domain (LF, HF, LF/HF ratio) from RR intervals.
+    tool: extract_hrv_features
+    depends_on: [preprocess]
+    condition: "preprocess step produced rr_intervals_ms with at least 10 intervals"
+
+  - id: estimate_spo2
+    description: >
+      Estimate SpO2 if both red and IR channels are available.
+      Skip if only one channel is present.
+    tool: estimate_spo2
+    depends_on: [load_signal]
+    condition: "signal has red and IR channels"
+
+  - id: dc_layer
+    description: >
+      Extract PPG DC (low-frequency baseline) component for hemodynamic
+      monitoring or perfusion analysis.
+    tool: extract_ppg_dc_layer
+    depends_on: [load_signal]
+    condition: "perfusion or slow trend analysis requested"
+
+  - id: check_thresholds
+    description: >
+      Compare extracted features against clinical thresholds from config.
+      Flag: bradycardia, tachycardia, hypoxemia, poor SQI.
+    tool: check_clinical_thresholds
+    depends_on: [extract_hrv, estimate_spo2, check_sqi]
+
+output_schema:
+  patient_id: str | null
+  timestamp: str            # ISO 8601
+  signal_path: str
+  fs: int
+  sqi:
+    score: float            # 0–1
+    quality: str            # "good" | "acceptable" | "poor"
+    pct_good_windows: float
+  hrv:
+    mean_rr_ms: float
+    sdnn_ms: float
+    rmssd_ms: float
+    pnn50_pct: float
+    lf_power: float | null
+    hf_power: float | null
+    lf_hf_ratio: float | null
+  spo2_pct: float | null
+  heart_rate_bpm: float
+  flags: list[str]
+  confidence: str           # "high" | "medium" | "low"
+  notes: str
+
+interpretation:
+  escalate_if_acceptance_rate_below: 0.40
+  verdict_thresholds:
+    acceptable: 0.80
+    marginal: 0.60
+    poor: 0.0
