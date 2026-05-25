@@ -39,6 +39,11 @@ This document captures the user stories for the **Agentic AI for High-Frequency 
 | US-013 | Data Engineer | As a Data Engineer, I want to receive meaningful error messages when a file upload fails due to an unsupported format, corrupted data, or missing sampling rate metadata so that I can diagnose and fix the issue quickly. | Must |
 | US-014 | Study Coordinator | As a Study Coordinator, I want the dashboard to load within 3 seconds even when displaying results for 50+ recordings so that the interface remains usable during busy clinic days. | Should |
 | US-015 | Clinical Researcher | As a Clinical Researcher, I want waveform and SQI data to be protected in transit and at rest so that anonymous waveform data is stored securely, consistent with OUCRU's relaxed privacy requirements for non-PII data. | Must |
+| US-016 | Reviewer | As a Reviewer, I want to override a segment's AI classification to `accept` or `reject` with a required reason category and note so that human adjudication can correct the effective classification without overwriting the original AI output. | Must |
+| US-017 | Admin or Reviewer | As an Admin or Reviewer, I want override changes to supersede the current active override without deleting history so that the adjudication trail remains append-only and auditable. | Must |
+| US-018 | Researcher or Readonly User | As a Researcher or Readonly user, I want to view both the original AI classification and the effective classification without edit controls so that I can interpret results without changing adjudication state. | Must |
+| US-019 | Admin | As an Admin, I want approved override data to flow through a staged collection → quality screen → evaluation → promotion pipeline so that feedback can improve later models safely without immediate online learning. | Should |
+| US-020 | Clinical Researcher | As a Clinical Researcher, I want reports generated before a later override to show a stale warning so that I do not mistake an outdated report for the latest adjudicated result. | Must |
 
 ---
 

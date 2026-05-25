@@ -28,6 +28,8 @@ This design makes the agent's logic testable independently of `vital_sqi`, allow
 | **Error handling and recovery** | Detect tool failures, decide whether to retry, fall back to a degraded mode, or escalate to a human operator |
 | **Escalation** | Flag recordings that require human review (e.g., acceptance rate < 40%, corrupted file segments, anomalous SQI patterns not covered by rules) |
 | **Logging** | Record every tool call, input, output, and reasoning step to the `AgentLogs` table for full auditability |
+| **Human-override awareness** | Preserve the original AI classification, surface active human override context, and never silently overwrite an active human effective label |
+| **Feedback governance** | Treat override data as governed learning input for later offline evaluation, never as immediate online training signal |
 
 ---
 

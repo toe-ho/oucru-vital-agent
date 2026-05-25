@@ -56,6 +56,8 @@ This document specifies all functional requirements for the **Agentic AI for Hig
 | FR-018 | The system shall handle vital_sqi processing errors (e.g., insufficient beats detected, flat-line signal) gracefully, marking affected segments as "uncomputable" rather than crashing the pipeline. | Must | SQA |
 | FR-019 | The system shall expose a preprocessing step (bandpass filter, baseline wander removal) configurable per signal type, applied before SQI computation. | Should | SQA |
 | FR-020 | The system shall store all computed SQI values, segment timestamps, and classification decisions in persistent storage linked to the recording ID for later retrieval. | Must | SQA |
+| FR-020A | The system shall preserve the original AI-generated segment `classification` as an immutable generated output. Human review shall not overwrite `segments.classification`. | Must | SQA |
+| FR-020B | The system shall derive an `effective_classification` for UI and report use: active override label if one exists, otherwise the original AI `classification`. | Must | SQA |
 
 ---
 

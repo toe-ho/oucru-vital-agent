@@ -184,7 +184,7 @@ Automated HTML/PDF reports are generated per recording. The Settings page allows
 
 ## Phase 5: Delivery & Core Features (Weeks 15–16)
 
-**Goal:** Polish, deploy, and prepare the prototype for the capstone presentation. Deliver chatbot, deployment, and demo readiness as core final-phase outcomes.
+**Goal:** Polish, deploy, and prepare the prototype for the capstone presentation. Deliver chatbot, deployment, governed segment feedback, and demo readiness as core final-phase outcomes.
 
 ### Tasks
 

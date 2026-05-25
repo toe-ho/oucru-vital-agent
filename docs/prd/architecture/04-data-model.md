@@ -6,12 +6,19 @@
 
 ## Overview
 
-This document defines the PostgreSQL schema for OUCRU Vital Agent. The model prioritizes clear run lineage, auditability, role-based access, report traceability, and simple MVP implementation.
+This document defines the PostgreSQL schema for OUCRU Vital Agent. The model prioritizes clear run lineage, auditability, role-based access, report traceability, governed human override history, and simple MVP implementation.
+
+Classification contract:
+- `segments.classification` is the immutable AI-generated label from an assessment job.
+- Human review creates append-only `segment_override_events`; it never mutates `segments.classification`.
+- `effective_classification` is a derived read-model value: active override label if one exists, otherwise `segments.classification`.
+- A report is stale when `reports.generated_at` is earlier than the latest active override event affecting any segment included in that report.
 
 The core lineage is:
 
 ```text
 recordings → assessment_jobs → segments → sqi_results
+segments → segment_override_events
 assessment_jobs → reports
 assessment_jobs → agent_logs
 recordings/reports/jobs → conversations → chat_messages
@@ -38,7 +45,7 @@ Use `deleted_at IS NULL` to filter active rows. Generated outputs and logs are a
 |---|---|---|
 | Mutable business entities | `users`, `roles`, `user_roles`, `recordings`, `assessment_jobs`, `reports`, `conversations`, `chat_messages`, `settings` | Full audit fields + soft delete |
 | Generated outputs | `segments`, `sqi_results` | Append-only; new assessment job creates new outputs |
-| Logs/events | `agent_logs`, `audit_events` | Append-only; never update/delete in normal operation |
+| Logs/events | `agent_logs`, `audit_events`, `segment_override_events` | Append-only; never update/delete in normal operation |
 
 ---
 
@@ -52,6 +59,7 @@ users             (many) >────< (many) roles via user_roles
 recordings        (1) ──────< (many) assessment_jobs
 assessment_jobs   (1) ──────< (many) segments
 segments          (1) ──────< (many) sqi_results
+segments          (1) ──────< (many) segment_override_events
 assessment_jobs   (1) ──────< (many) reports
 assessment_jobs   (1) ──────< (many) agent_logs
 
@@ -458,7 +466,47 @@ CREATE INDEX idx_sqi_results_category ON sqi_results (metric_category, metric_na
 
 ---
 
-### 8. `reports`
+### 8. `segment_override_events`
+
+Stores append-only human override events for segments. This table captures reviewer/admin adjudication without overwriting the original AI output in `segments.classification`.
+
+```sql
+CREATE TABLE segment_override_events (
+    id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    segment_id                   UUID NOT NULL REFERENCES segments(id) ON DELETE CASCADE,
+    recording_id                 UUID NOT NULL REFERENCES recordings(id) ON DELETE CASCADE,
+    assessment_job_id            UUID NOT NULL REFERENCES assessment_jobs(id) ON DELETE CASCADE,
+    label                        VARCHAR(20) NOT NULL CHECK (label IN ('accept', 'reject')),
+    reason_category              VARCHAR(80) NOT NULL,
+    note                         TEXT NOT NULL,
+    supersedes_override_event_id UUID REFERENCES segment_override_events(id),
+    created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_by                   UUID NOT NULL REFERENCES users(id),
+
+    CONSTRAINT segment_override_events_self_reference_check
+        CHECK (supersedes_override_event_id IS NULL OR supersedes_override_event_id <> id)
+);
+```
+
+**Indexes:**
+
+```sql
+CREATE INDEX idx_segment_override_events_segment_created_at
+    ON segment_override_events (segment_id, created_at DESC);
+CREATE INDEX idx_segment_override_events_recording_created_at
+    ON segment_override_events (recording_id, created_at DESC);
+CREATE INDEX idx_segment_override_events_supersedes
+    ON segment_override_events (supersedes_override_event_id);
+```
+
+**Semantics:**
+
+- Override events are append-only.
+- Creating a replacement override inserts a new row that references the superseded event via `supersedes_override_event_id`.
+- The active override for a segment is the newest override event that has not itself been superseded by a newer event.
+- `effective_classification` is derived at read time from the active override, not stored by mutating the `segments` row.
+
+### 9. `reports`
 
 Stores the canonical JSON report plus optional rendered HTML and PDF path. No separate export table is needed for MVP.
 
@@ -499,7 +547,7 @@ CREATE INDEX idx_reports_content_json ON reports USING GIN (content_json);
 
 ---
 
-### 9. `conversations`
+### 10. `conversations`
 
 Groups chatbot messages into a thread scoped to a recording and optionally grounded in one job/report.
 

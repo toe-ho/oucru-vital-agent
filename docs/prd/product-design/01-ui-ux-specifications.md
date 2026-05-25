@@ -138,7 +138,7 @@ This document defines wireframe layouts, component breakdowns, interaction patte
 | Waveform Display | Recharts-based line chart. X-axis: time in seconds. Y-axis: amplitude (mV or normalized). Highlights the current segment's time range with a shaded overlay. |
 | Color-coded segment bar | Horizontal bar below waveform. Each segment is rendered as a colored block: green (accept), red (reject), yellow (borderline/pending). Clicking a block navigates to that segment. |
 | Segment Navigation | Prev/Next buttons step through segments sequentially. Dropdown selector allows jumping to any segment by number. Updates waveform view and SQI panel simultaneously. |
-| Classification Badge | Displays agent-assigned classification. "Override" dropdown allows the user to manually set accept/reject/pending. Manual overrides are stored and flagged distinctly. |
+| Classification Badge | Displays the original AI classification and the current effective classification. Override controls are shown only to `admin` and `reviewer` users. MVP override labels are limited to `accept` and `reject`, and saving requires reason category plus note. Manual overrides are stored as append-only superseding events and flagged distinctly. |
 | SQI Scores Panel | Lists all computed metrics for the current segment. Each row shows: metric name, value, pass/fail checkmark. Failing metrics shown in `color-reject` red. Passing metrics in `color-text-muted`. |
 
 ---

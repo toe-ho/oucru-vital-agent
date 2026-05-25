@@ -97,13 +97,19 @@ The agent calls `compute_sqi_windowed` with the configured window duration (defa
 The agent calls `compute_sqi` for overall quality and `compute_sqi_windowed` for segment-level quality. These tools return overall and per-window quality scores that are persisted to the `SQIResults` table.
 
 ### Step 6 — Classification
-The agent applies the configured rule dictionary to overall and windowed SQI scores, and calls `check_clinical_thresholds` when heart rate, SpO2, or SQI thresholds need structured flags. Classification results are written to the `Classifications` table.
+The agent applies the configured rule dictionary to overall and windowed SQI scores, and calls `check_clinical_thresholds` when heart rate, SpO2, or SQI thresholds need structured flags. The original AI segment `classification` is stored as immutable generated output. If a later authorized human override exists, read models derive `effective_classification` from the active override label; otherwise they use the original AI `classification`.
 
-### Step 7 — Agent Interpretation
-The LLM reads the classification results and SQI matrix. It reasons about patterns: overall acceptance rate, clusters of consecutive rejected segments, temporal degradation trends (e.g., signal quality declining in the final 20 minutes), and outlier SQI values. The agent produces a structured interpretation object.
+### Step 7 — Human Override and Effective Classification
+An authorized `admin` or `reviewer` can create a segment override event with label `accept` or `reject`, plus required reason category and note. Override events are append-only; changing a prior override creates a superseding event rather than deleting history. The system keeps the original AI classification visible and computes the current `effective_classification` for UI and reporting.
 
-### Step 8 — Report Generation
-The backend report service combines SQI summary statistics, the agent's interpretation text, the timeline of accepted/rejected segments, flagged issues, and actionable recommendations into a canonical JSON report payload. HTML and PDF reports are rendered exports from that JSON payload.
+### Step 8 — Agent Interpretation
+The LLM reads the classification results, SQI matrix, and any applicable override context. It reasons about patterns: overall acceptance rate, clusters of consecutive rejected segments, temporal degradation trends (e.g., signal quality declining in the final 20 minutes), and outlier SQI values. The agent produces a structured interpretation object but must not silently replace an active human override.
+
+### Step 9 — Report Generation
+The backend report service combines SQI summary statistics, the agent's interpretation text, the timeline of accepted/rejected segments, flagged issues, and actionable recommendations into a canonical JSON report payload. HTML and PDF reports are rendered exports from that JSON payload. If a segment override occurs after report generation, the existing report is marked stale instead of being silently regenerated.
+
+### Step 10 — Safe Feedback-to-Learning Flow
+Override events may later enter a governed active-learning pipeline: collect feedback, quality screen/export candidates, evaluate candidate model or threshold changes offline, require admin approval for promotion, and support rollback. No single override directly mutates production models or thresholds.
 
 ### Step 9 — Dashboard Display
 The frontend polls `GET /api/results/{recording_id}` at 5-second intervals until status is `completed`. Live waveform streaming and SSE-based real-time progress are deferred to post-MVP/future work. Two views are updated:

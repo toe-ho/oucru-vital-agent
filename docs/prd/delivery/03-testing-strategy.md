@@ -141,7 +141,9 @@ Playwright E2E tests covering user flows (Phase 4+):
 2. Navigate between Monitoring Screen and Quality Dashboard views.
 3. Export report as PDF → verify file download initiated.
 4. View agent decision log for a specific segment.
-5. Open chatbot panel → ask a question about a rejected segment → verify response references actual SQI values from that recording.
+5. Create a segment override as `admin` or `reviewer` → verify required reason fields, dual AI/effective labels, and append-only history behavior.
+6. Open chatbot panel → ask a question about a rejected segment → verify response references actual SQI values from that recording.
+7. Generate a report, apply a later override, and verify the existing report shows a stale warning without auto-regeneration.
 
 ### 2.4 Chatbot Integration Tests
 

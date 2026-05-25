@@ -167,7 +167,7 @@ RuleSet evaluation (all-or-nothing):
 
 ### Customization
 
-The agent can override default thresholds by constructing custom `Rule` and `RuleSet` objects at runtime, enabling context-aware classification (e.g., relaxed thresholds for pediatric recordings or known arrhythmia patients).
+The agent can customize default thresholds by constructing custom `Rule` and `RuleSet` objects at runtime, enabling context-aware classification (e.g., relaxed thresholds for pediatric recordings or known arrhythmia patients).
 
 ---
 

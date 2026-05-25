@@ -20,9 +20,9 @@ All endpoints except health checks require a valid JWT bearer token issued after
 
 | Role | Capabilities |
 |------|--------------|
-| `admin` | Manage users, roles, settings, and all records |
+| `admin` | Manage users, roles, settings, all records, and segment overrides |
 | `researcher` | Upload recordings, start assessments, view results, generate reports, use chat |
-| `reviewer` | View assigned recordings, reports, logs, and use chat |
+| `reviewer` | View assigned recordings, reports, logs, use chat, and create/supersede segment overrides |
 | `readonly` | View accessible recordings and reports only |
 
 Endpoints that modify system-wide settings require `admin`. Assessment, report, and chat endpoints require access to the target recording or assessment job.
@@ -78,12 +78,198 @@ All error responses share this structure:
 |--------|-------|--------|
 | Recording | `status` | `uploaded`, `processing`, `completed`, `failed`, `deleted` |
 | Assessment job | `status` | `queued`, `processing`, `completed`, `failed`, `cancelled` |
-| Segment | `classification` | `accept`, `reject`, `pending`, `uncomputable` |
+| Segment | `ai_classification` | `accept`, `reject`, `pending`, `uncomputable` |
+| Segment override event | `label` | `accept`, `reject` |
 | Report | `status` | `generating`, `completed`, `failed` |
+
+### Classification Contract
+
+- `ai_classification` is the immutable AI-generated segment output stored from the assessment job.
+- `effective_classification` is the current product-facing label used by UI and reports: active override label if one exists, otherwise `ai_classification`.
+- Override history is append-only. Changing a prior override creates a new superseding override event; prior events are retained for auditability.
+- Reports generated before a later override remain accessible but must be marked stale; they are not silently regenerated.
 
 ---
 
 ## Endpoints
+
+---
+
+### POST /api/segments/{segment_id}/overrides
+
+Create a segment override event.
+
+**Authorization:** `admin` or `reviewer`
+
+**Request:**
+
+```json
+{
+  "label": "reject",
+  "reason_category": "artifact_review",
+  "note": "Motion artifact confirmed during manual review."
+}
+```
+
+**Fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `label` | string | yes | `"accept"` or `"reject"` |
+| `reason_category` | string | yes | Controlled reason category for audit and analytics |
+| `note` | string | yes | Reviewer rationale for the override |
+
+**Response `201`:**
+
+```json
+{
+  "override_event_id": "f9d5a54a-2f8b-4d73-a6d1-66dff3a04a11",
+  "segment_id": "650e8400-e29b-41d4-a716-446655440045",
+  "label": "reject",
+  "reason_category": "artifact_review",
+  "note": "Motion artifact confirmed during manual review.",
+  "supersedes_override_event_id": null,
+  "is_active": true,
+  "created_at": "2024-11-15T09:10:00Z",
+  "created_by": "9f3b4a7e-49f8-4b31-ae32-2f17f97d7f2a",
+  "effective_classification": "reject"
+}
+```
+
+**Errors:**
+
+| Code | Condition |
+|------|-----------|
+| `400` | `label` is not `"accept"` or `"reject"` |
+| `400` | `reason_category` or `note` is missing |
+| `403` | Authenticated user is not `admin` or `reviewer` |
+| `404` | `segment_id` does not exist |
+
+---
+
+### POST /api/segments/{segment_id}/overrides/{override_event_id}/supersede
+
+Create a new override event that supersedes the current active override. Existing override events are never deleted or mutated in place.
+
+**Authorization:** `admin` or `reviewer`
+
+**Request:**
+
+```json
+{
+  "label": "accept",
+  "reason_category": "manual_ecg_review",
+  "note": "Prior rejection was overly strict for this signal segment."
+}
+```
+
+**Response `201`:** same schema as `POST /api/segments/{segment_id}/overrides`, but `supersedes_override_event_id` contains the superseded event ID.
+
+---
+
+### GET /api/segments/{segment_id}/overrides
+
+List segment override history in newest-first order.
+
+**Authorization:** any authenticated role with access to the segment's recording
+
+**Response `200`:**
+
+```json
+{
+  "segment_id": "650e8400-e29b-41d4-a716-446655440045",
+  "ai_classification": "reject",
+  "effective_classification": "accept",
+  "items": [
+    {
+      "override_event_id": "b3c2d1e0-a9b8-7654-3210-abcdef012345",
+      "label": "accept",
+      "reason_category": "manual_ecg_review",
+      "note": "Prior rejection was overly strict for this signal segment.",
+      "supersedes_override_event_id": "f9d5a54a-2f8b-4d73-a6d1-66dff3a04a11",
+      "is_active": true,
+      "created_at": "2024-11-15T09:20:00Z",
+      "created_by": "9f3b4a7e-49f8-4b31-ae32-2f17f97d7f2a"
+    }
+  ]
+}
+```
+
+---
+
+### GET /api/reports/{report_id}/freshness
+
+Retrieve report freshness relative to later override activity.
+
+**Authorization:** any authenticated role with access to the report's recording
+
+**Response `200`:**
+
+```json
+{
+  "report_id": "r9f8e7d6-c5b4-3a21-0987-654321fedcba",
+  "status": "completed",
+  "is_stale": true,
+  "stale_reason": "One or more segment overrides were created after report generation.",
+  "latest_override_at": "2024-11-15T09:20:00Z",
+  "generated_at": "2024-11-15T08:35:22Z"
+}
+```
+
+---
+
+### POST /api/feedback-learning/promotions
+
+Submit an evaluated feedback-derived candidate for admin approval and promotion. This endpoint represents a staged offline learning workflow, not direct online learning from a user override.
+
+**Authorization:** `admin`
+
+**Request:**
+
+```json
+{
+  "candidate_id": "cand-001",
+  "evaluation_summary": "Offline validation passed required quality gates.",
+  "rollback_plan": "Revert to previous threshold manifest within one deployment."
+}
+```
+
+**Response `202`:**
+
+```json
+{
+  "candidate_id": "cand-001",
+  "status": "pending_admin_approval"
+}
+```
+
+---
+
+### POST /api/feedback-learning/promotions/{candidate_id}/approve
+
+Approve and promote a feedback-derived candidate after offline evaluation.
+
+**Authorization:** `admin`
+
+---
+
+### POST /api/feedback-learning/promotions/{candidate_id}/rollback
+
+Rollback a previously promoted feedback-derived candidate.
+
+**Authorization:** `admin`
+
+---
+
+### GET /api/feedback-learning/candidates
+
+List staged feedback-derived candidates and approval status.
+
+**Authorization:** `admin`
+
+---
+
+## Existing Assessment and Report Endpoints
 
 ---
 
@@ -314,7 +500,8 @@ Retrieve completed assessment results for one job.
       "segment_number": 1,
       "start_time": 0,
       "end_time": 30,
-      "classification": "accept",
+      "ai_classification": "accept",
+      "effective_classification": "accept",
       "quality_score": 0.91,
       "sqi_summary": {
         "kurtosis": 3.14,
@@ -369,7 +556,8 @@ Retrieve the full SQI breakdown for one segment. Use `/api/recordings/{recording
   "segment_number": 45,
   "start_time": 1320,
   "end_time": 1350,
-  "classification": "reject",
+  "ai_classification": "reject",
+  "effective_classification": "reject",
   "quality_score": 0.23,
   "sqi_values": {
     "kurtosis": 12.8,

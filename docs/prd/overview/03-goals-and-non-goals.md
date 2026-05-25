@@ -71,9 +71,42 @@ Provide a natural language conversational interface allowing practitioners to qu
 "How many recordings failed quality checks this week?"
 ```
 
-The chatbot shall also explain configuration options, translate SQI metric names into clinically meaningful language, and assist users in understanding quality reports.
+The chatbot shall also explain configuration options, translate SQI metric names into clinically meaningful language, and assist users in understanding quality reports. It must distinguish the original AI classification from any later human override and explain the effective classification shown in the UI or report.
 
 **Success criterion:** A practitioner can ask a natural language question about any quality result and receive a meaningful, accurate answer without navigating technical dashboards.
+
+---
+
+### G7 — Human Review and Segment Feedback
+
+Provide a governed human-review workflow for segment-level feedback so qualified users can correct an AI classification without mutating the original AI output.
+
+The workflow must support:
+
+- Viewing both the original AI classification and the effective classification
+- Reviewer/admin-only overrides at the segment level
+- MVP override labels limited to `accept` and `reject`
+- Required override reason category and note
+- Override history with append-only supersede semantics
+- Report freshness warnings when an override happens after report generation
+
+**Success criterion:** An authorized reviewer can apply a segment override with required rationale, the original AI classification remains visible, and any older report is clearly marked stale rather than silently regenerated.
+
+---
+
+### G8 — Safe Learning from Feedback
+
+Capture segment feedback as a governed input to later model improvement without allowing a single user action to directly mutate production behavior.
+
+The feedback lifecycle must be staged:
+
+1. Collect override events
+2. Quality screen and export approved feedback candidates
+3. Evaluate candidate model or threshold changes offline
+4. Require admin approval before promotion
+5. Support rollback after promotion
+
+**Success criterion:** The PRD defines a full feedback-to-learning lifecycle while making clear that no immediate online learning or automatic threshold mutation occurs from a user override.
 
 ---
 
