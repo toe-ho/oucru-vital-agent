@@ -24,7 +24,7 @@ This design makes the agent's logic testable independently of `vital_sqi`, allow
 | **Pipeline orchestration** | Determine the correct sequence of tool calls for a given file type (ECG vs. PPG) and invoke them in order |
 | **SQI interpretation** | Read the SQI matrix returned by `vital_sqi` and identify patterns: low acceptance rate, clustered rejections, temporal degradation, outlier metric values |
 | **Quality assessment decisions** | Determine the overall quality verdict (acceptable / marginal / poor) based on acceptance rate thresholds and agent reasoning |
-| **Report generation** | Compose a structured quality report combining quantitative SQI statistics with narrative interpretation and recommendations |
+| **Report interpretation** | Produce bounded interpretation fields for the report service, including key findings, recommendations, limitations, and escalation rationale |
 | **Error handling and recovery** | Detect tool failures, decide whether to retry, fall back to a degraded mode, or escalate to a human operator |
 | **Escalation** | Flag recordings that require human review (e.g., acceptance rate < 40%, corrupted file segments, anomalous SQI patterns not covered by rules) |
 | **Logging** | Record every tool call, input, output, and reasoning step to the `AgentLogs` table for full auditability |
@@ -41,7 +41,7 @@ The agent has access to 8 OUCRU analysis tools. Each tool is a Python function r
 
 ### Tool 1: `load_signal_file`
 
-**Purpose:** Load a physiological waveform from CSV or Parquet so later tools can operate on numeric arrays rather than file paths.
+**Purpose:** Validate and register a physiological waveform from CSV or Parquet so later tools can operate on a server-side signal reference, not raw arrays in agent messages.
 
 **Function signature:**
 ```python
@@ -60,7 +60,7 @@ def load_signal_file(
 | `column` | `str` | Signal column to load; default `"ppg"` |
 | `fs` | `int` | Sampling rate in Hz; default `100` |
 
-**Returns:** Signal samples and sampling metadata for downstream tools.
+**Returns:** A `signal_ref`, sampling metadata, duration, selected column, and summary statistics. It must not return the full waveform sample list to the LLM. The backend may implement `signal_ref` as a persisted file path, cached array key, or memory-mapped handle.
 
 ---
 
@@ -71,7 +71,7 @@ def load_signal_file(
 **Function signature:**
 ```python
 def compute_sqi(
-    signal: list[float],
+    signal_ref: str,
     fs: int = 100,
     signal_type: Literal["ecg", "ppg"] = "ppg",
 ) -> dict
@@ -88,7 +88,7 @@ def compute_sqi(
 **Function signature:**
 ```python
 def compute_sqi_windowed(
-    signal: list[float],
+    signal_ref: str,
     fs: int = 100,
     signal_type: Literal["ecg", "ppg"] = "ppg",
     window_sec: int = 30,
@@ -106,12 +106,12 @@ def compute_sqi_windowed(
 **Function signature:**
 ```python
 def preprocess_ppg(
-    signal: list[float],
+    signal_ref: str,
     fs: int = 100,
 ) -> dict
 ```
 
-**Returns:** Processed PPG samples, detected peaks, and preprocessing metadata.
+**Returns:** A derived `signal_ref`, detected peaks summary, and preprocessing metadata. It must not return full processed sample arrays to the LLM.
 
 ---
 
@@ -138,8 +138,8 @@ def extract_hrv_features(
 **Function signature:**
 ```python
 def estimate_spo2(
-    red_signal: list[float],
-    ir_signal: list[float],
+    red_signal_ref: str,
+    ir_signal_ref: str,
     fs: int = 100,
 ) -> dict
 ```
@@ -155,7 +155,7 @@ def estimate_spo2(
 **Function signature:**
 ```python
 def extract_ppg_dc_layer(
-    signal: list[float],
+    signal_ref: str,
     fs: int = 100,
 ) -> dict
 ```
@@ -205,7 +205,7 @@ The agent operates on a Reasoning + Acting (ReAct) loop. Each iteration consists
 ┌─────────────────────────────────────────────────────────────────┐
 │  ACT: Call appropriate OUCRU tools                              │
 │       → load_signal_file(file_path, column, fs)                 │
-│       → compute_sqi(signal, fs, signal_type)                    │
+│       → compute_sqi(signal_ref, fs, signal_type)                │
 │       → compute_sqi_windowed(...) for segment-level quality     │
 │       → If PPG raw/unfiltered: preprocess_ppg() first           │
 └──────────────────────────────┬──────────────────────────────────┘
@@ -232,13 +232,13 @@ The agent operates on a Reasoning + Acting (ReAct) loop. Each iteration consists
                │ normal case                       │ needs detail
                ▼                                   ▼
 ┌──────────────────────────┐       ┌───────────────────────────────┐
-│  ACT: Generate report    │       │  ACT: Inspect windowed SQI     │
-│  from persisted results  │       │  and threshold flags           │
+│  ACT: Produce bounded    │       │  ACT: Inspect persisted        │
+│  interpretation JSON     │       │  SQI summaries and flags       │
 └──────────────┬───────────┘       └──────────────┬────────────────┘
                │                                  │
                ▼                                  ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  OBSERVE: Report generated / Detail retrieved                   │
+│  OBSERVE: Interpretation generated / Detail retrieved           │
 └──────────────────────────────┬──────────────────────────────────┘
                                │
                                ▼
@@ -256,6 +256,7 @@ The agent operates on a Reasoning + Acting (ReAct) loop. Each iteration consists
 ┌─────────────────────────────────────────────────────────────────┐
 │  ACT: Finalize                                                  │
 │       - Persist results to database                             │
+│       - Hand off report creation to report service              │
 │       - Update recording status to "completed" or "escalated"  │
 │       - Trigger dashboard notification                          │
 └─────────────────────────────────────────────────────────────────┘
@@ -274,7 +275,7 @@ collected during research studies and clinical trials.
 
 ## Your Capabilities
 You have access to the following tools:
-- load_signal_file: Load CSV or Parquet waveform data into numeric samples with sampling metadata
+- load_signal_file: Validate CSV or Parquet waveform data and return a signal_ref plus sampling metadata
 - compute_sqi: Compute an overall ECG or PPG quality score
 - compute_sqi_windowed: Compute per-window SQI values for segment-level quality analysis
 - preprocess_ppg: Filter, normalize, and detect peaks in PPG signals
@@ -286,7 +287,7 @@ You have access to the following tools:
 ## Decision Guidelines
 
 ### Standard quality-assessment sequence
-- Start with `load_signal_file` to load the configured waveform column and sampling rate.
+- Start with `load_signal_file` to validate the configured waveform column and sampling rate.
 - Call `compute_sqi` to obtain an overall ECG or PPG quality score.
 - Call `compute_sqi_windowed` when segment-level quality, timeline overlays, or clustered artifact detection are needed.
 - Call `check_clinical_thresholds` to convert SQI, heart rate, or SpO2 outputs into structured flags.
@@ -328,11 +329,15 @@ When you have completed an assessment, produce your interpretation as a JSON obj
 - When uncertain about signal type or file format, ask for clarification rather than guessing.
 ```
 
+The prompt is a versioned template loaded from `backend/app/agent/prompts/assessment-system-prompt.md`, not hard-coded in Python. Prompt changes require schema validation and golden-file evaluation before use in the main pipeline.
+
+Per-recording constraints, such as cohort-specific heart-rate thresholds, must be controlled through validated assessment config/settings records. Researchers may request constraints only through approved UI/API fields. Free-text researcher notes may be included as context, but they cannot override thresholds unless an admin-approved settings record exists.
+
 ---
 
 ## 6. Recommended Framework: smolagents
 
-**Recommendation: smolagents** for agent orchestration.
+**Recommendation: smolagents `ToolCallingAgent`** for MVP agent orchestration.
 
 ### Why smolagents
 
@@ -341,10 +346,12 @@ When you have completed an assessment, produce your interpretation as a JSON obj
 | Tool control | The agent can call only approved Python tools registered in the tool list |
 | Simplicity | Minimal orchestration layer for a capstone team; fewer moving parts than graph frameworks |
 | Local LLM support | Works well with Ollama-backed local models such as Qwen3-8B |
-| Auditability | Each tool call can be logged with arguments, result summary, and reasoning |
+| Auditability | JSON tool calls map naturally to one `agent_logs` row per tool invocation |
 | Workflow flexibility | YAML task plans and `config.yaml` can drive task order, thresholds, and model settings |
 
-**For this project**, the agent receives a task plan, loads the approved OUCRU tools, asks Qwen3-8B through Ollama to choose tool calls, and records each step to `AgentLogs`. The backend remains responsible for persistence, report generation, API responses, and access control.
+**For this project**, the agent receives a task plan, loads the approved OUCRU tools, asks Qwen3-8B through Ollama to choose JSON tool calls, and records each step to `agent_logs`. The backend remains responsible for persistence, report generation, API responses, and access control.
+
+`CodeAgent` is not the MVP choice. It emits executable Python code that can call multiple tools before the model responds again. If used later for admin-only exploration, it requires sandboxed execution, explicit guards against large array literals, and additional instrumentation to recover per-tool log rows.
 
 ### Suggested smolagents Workflow
 
@@ -352,10 +359,11 @@ When you have completed an assessment, produce your interpretation as a JSON obj
 [user/API request]
   → load YAML task plan + config.yaml
   → build system prompt with workflow rules and thresholds
-  → initialize smolagents CodeAgent with approved tools
-  → run tool-call loop through Ollama + Qwen3-8B
+  → initialize smolagents ToolCallingAgent with approved tools
+  → run JSON tool-call loop through Ollama + Qwen3-8B
   → validate structured JSON output
-  → persist SQI/window results, report metadata, and agent logs
+  → persist SQI/window results, interpretation metadata, and agent logs
+  → report service creates canonical report from persisted results
 ```
 
 Workflow rules:
@@ -417,7 +425,7 @@ class AgentState(TypedDict):
     # Processing stage
     current_stage: Literal[
         "initialized", "preprocessing", "assessing",
-        "interpreting", "fetching_details", "generating_report",
+        "interpreting", "fetching_details", "preparing_report_inputs",
         "finalizing", "escalated", "completed", "error"
     ]
     needs_preprocessing: bool
@@ -425,7 +433,7 @@ class AgentState(TypedDict):
     # Intermediate results
     preprocessed_file_path: str | None
     assessment_result: dict | None        # serialized ECGAssessmentResult / PPGAssessmentResult
-    sqi_matrix: dict | None               # segment_id → {metric: value}
+    sqi_summary: dict | None              # aggregate metrics only: mean, std, acceptance_rate, failed_metric_counts
     flagged_segment_ids: list[str]
     segment_details: dict[str, dict]      # segment_id → SegmentDetail
 
@@ -441,12 +449,11 @@ class AgentState(TypedDict):
     escalation_reason: str | None
 
     # Output
-    report_id: str | None
     error_message: str | None
     tool_call_count: int
 ```
 
-**State persistence:** After each node completes, the state is serialized and written to the `AgentLogs` table (linked to `recording_id`). This allows the assessment to be resumed if interrupted (e.g., container restart) and provides the audit trail.
+**State persistence:** Store full per-segment SQI values only in `sqi_results`. `agent_logs` stores compact state summaries, tool arguments, output summaries, reasoning, timings, and errors. Do not serialize the full `sqi_matrix` into every log row.
 
 ---
 
@@ -458,18 +465,19 @@ Every tool call, reasoning step, and decision is logged to the `AgentLogs` table
 
 ```sql
 CREATE TABLE agent_logs (
-    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    recording_id UUID NOT NULL REFERENCES recordings(id),
-    step_number  INTEGER NOT NULL,
-    timestamp    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    stage        TEXT NOT NULL,
-    tool_called  TEXT,              -- NULL if this is a reasoning step, not a tool call
-    input_params JSONB,             -- parameters passed to the tool
-    output_summary TEXT,            -- brief text summary of tool output
-    reasoning    TEXT,              -- agent's THINK step text for this iteration
-    duration_ms  INTEGER,           -- tool execution time in milliseconds
-    success      BOOLEAN NOT NULL,
-    error_detail TEXT               -- populated if success = false
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    assessment_job_id UUID NOT NULL REFERENCES assessment_jobs(id),
+    recording_id      UUID NOT NULL REFERENCES recordings(id),
+    step_number       INTEGER NOT NULL,
+    timestamp         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    stage             TEXT NOT NULL,
+    tool_called       TEXT,
+    input_params      JSONB,
+    output_summary    TEXT,
+    reasoning         TEXT,
+    duration_ms       INTEGER,
+    success           BOOLEAN NOT NULL,
+    error_detail      TEXT
 );
 ```
 
@@ -485,6 +493,22 @@ CREATE TABLE agent_logs (
 
 This log provides complete transparency for clinical audits, debugging of unexpected assessment outcomes, and training data for future model fine-tuning.
 
+Logs are linked to both `assessment_job_id` and `recording_id`. A recording can have multiple assessment jobs; job-level linkage is required to separate reruns and compare outputs.
+
+## 10. Prompt and Agent Evaluation
+
+Before implementation accepts a prompt revision, run a small golden-file evaluation:
+
+1. Clean ECG or PPG fixture: expect high acceptance rate, no escalation, valid JSON schema.
+2. Noisy fixture: expect rejected or borderline segments, key findings mention noise/artifact, valid JSON schema.
+3. LLM failure fixture: expect deterministic fallback output and explicit degraded-mode flag.
+
+Evaluation checks:
+- JSON output validates against the Pydantic interpretation schema.
+- No raw waveform arrays appear in prompts, tool arguments visible to the model, or logs.
+- Key metrics match persisted `sqi_results` summaries.
+- Tool-call count and timeout durations are recorded for later optimization.
+
 ---
 
 ## 11. Error Handling
@@ -496,7 +520,7 @@ This log provides complete transparency for clinical audits, debugging of unexpe
 3. Tool returns a structured error result: `{ "success": false, "error_type": "CorruptedFileError", "detail": "..." }`.
 4. Agent logs the error with full detail.
 5. Agent sets `state.current_stage = "error"` and `state.escalate = True`.
-6. Agent generates a minimal error report notifying the researcher that the file could not be processed.
+6. Agent returns structured error interpretation for the report service.
 7. Dashboard shows recording status as `"error"` with the error message.
 
 ### LLM Inference Failure
@@ -504,14 +528,14 @@ This log provides complete transparency for clinical audits, debugging of unexpe
 1. LLM API call times out or returns a non-parseable response.
 2. The smolagents workflow catches the exception.
 3. **Retry strategy**: exponential backoff — retry after 2s, 4s, 8s (max 3 retries).
-4. If all retries fail: fall back to **rule-based assessment mode** — run the OUCRU signal tools directly using default parameters, skip the LLM interpretation, and generate a reduced report with only quantitative statistics and no narrative.
-5. Log that the report was generated in fallback mode.
+4. If all retries fail: fall back to **rule-based assessment mode** — run the OUCRU signal tools directly using default parameters and skip the LLM interpretation.
+5. Log that the assessment used fallback mode; the report service renders the reduced report from persisted quantitative statistics.
 
 ### Pipeline Timeout
 
 1. Each tool call has a configurable timeout (default: 120 seconds for full pipeline, 30 seconds for detail queries).
 2. If a tool call exceeds the timeout, it is cancelled via `asyncio.wait_for`.
-3. Agent logs the timeout, marks the recording as `"partial"`, and generates a partial results report covering the segments processed before the timeout.
+3. Agent logs the timeout, marks the recording as `"partial"`, and hands partial persisted results to the report service.
 4. Researcher is notified via dashboard alert.
 
 ### Escalation Triggers Summary
