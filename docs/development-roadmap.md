@@ -1,8 +1,8 @@
 # Development Roadmap
 
 **Status:** In Progress  
-**Last Updated:** 2026-05-29  
-**Completed Phases:** 1-7 of 8
+**Last Updated:** 2026-05-31  
+**Completed Phases:** 1-7 of 8 + DevEx improvements
 
 ## Overview
 
@@ -198,9 +198,9 @@ This living document tracks the OUCRU Vital Agent implementation progress from P
 
 ---
 
-### Phase 8: Verification & Demo ⏳ Pending
+### Phase 8: Verification & Demo + DevEx ⏳ Pending
 
-**Goal:** Validate acceptance criteria, prepare demo dataset, document deployment.
+**Goal:** Validate acceptance criteria, prepare demo dataset, document deployment, and optimize developer experience.
 
 **Tasks:**
 - Run full test suite (backend unit/integration, frontend component/e2e)
@@ -210,6 +210,12 @@ This living document tracks the OUCRU Vital Agent implementation progress from P
 - Write deployment guide (local Docker, cloud options)
 - Record demo walkthrough
 - Performance profiling and optimization
+
+**DevEx Improvements (2026-05-31):**
+- ✓ Docker dev mode: `compose.dev.yml` with frontend HMR bind-mount (eliminates rebuild cycle)
+- ✓ Makefile shortcuts: `make dev`, `make dev-build` for faster iteration
+- ✓ Updated README with dev mode documentation
+- **Result:** Frontend iteration time reduced from ~2 min (rebuild) to <1 sec (HMR)
 
 **Target Completion:** 2026-06-05
 

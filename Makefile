@@ -1,4 +1,4 @@
-.PHONY: up down logs migrate seed test lint build
+.PHONY: up down logs migrate seed test lint build dev dev-build
 
 up:
 	docker compose up -d
@@ -25,6 +25,12 @@ lint:
 
 build:
 	docker compose build
+
+dev:
+	docker compose -f docker-compose.yml -f compose.dev.yml up
+
+dev-build:
+	docker compose -f docker-compose.yml -f compose.dev.yml up --build
 
 shell-backend:
 	docker compose exec backend bash

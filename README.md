@@ -61,6 +61,26 @@ docker compose exec backend python -m app.scripts.seed
 - PostgreSQL: localhost:5432
 - Ollama (if enabled): localhost:11434
 
+## Docker Dev Mode (Hot-Reload)
+
+Use `compose.dev.yml` to run frontend with HMR — **no rebuild on code changes**.
+
+```bash
+# First run or after changing package.json
+make dev-build
+
+# Daily dev iteration (hot-reload already built)
+make dev
+```
+
+Starts postgres + backend + frontend. Ollama is not started (profile-gated).
+
+**Rules:**
+- Code changes (`.tsx`, `.ts`, `.py`) hot-reload automatically — never run `docker compose build` for code changes.
+- After changing `package.json` / adding a dependency: `make dev-build` or `docker compose build frontend`.
+- Restart one service: `docker compose restart frontend`.
+- Prod build (CI-accurate): `make build`.
+
 ## Local Development (Without Docker)
 
 For rapid iteration without Docker:
@@ -86,13 +106,16 @@ Requires local PostgreSQL running (or adjust DATABASE_URL).
 ## Makefile Shortcuts
 
 ```bash
-make up        # docker compose up -d
-make down      # docker compose down
-make migrate   # alembic upgrade head
-make seed      # seed roles and default settings
-make test      # run backend + frontend tests
-make lint      # ruff + eslint
-make logs      # docker compose logs -f
+make up          # docker compose up -d (prod)
+make dev         # dev mode: hot-reload (no rebuild for code changes)
+make dev-build   # dev mode: rebuild first (first run / after dep changes)
+make down        # docker compose down
+make migrate     # alembic upgrade head
+make seed        # seed roles and default settings
+make test        # run backend + frontend tests
+make lint        # ruff + eslint
+make logs        # docker compose logs -f
+make build       # docker compose build (prod)
 ```
 
 ## Testing
