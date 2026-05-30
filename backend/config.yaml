@@ -1,0 +1,24 @@
+assessment:
+  window_duration_seconds: 30
+  overlap_seconds: 0
+  split_type: time          # "time" only for MVP
+  min_segment_duration: 5
+  metrics:
+    - snr
+    - kurtosis
+    - skewness
+    - zero_crossing_rate
+    - perfusion_index
+  rule_dict:
+    # metric: {required: bool, min: float|null, max: float|null}
+    snr: {required: true, min: 8.0, max: null}
+    kurtosis: {required: false, min: -1.5, max: 10.0}
+    skewness: {required: false, min: -2.0, max: 2.0}
+  classification:
+    accept_threshold: 0.6   # quality_score >= this → accept
+
+agent:
+  max_steps: 20
+  model: qwen3:8b
+  timeout_seconds: 300
+  retry_delays: [2, 4, 8]

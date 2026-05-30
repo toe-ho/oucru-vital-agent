@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-accept: #16a34a;
+  --color-reject: #dc2626;
+  --color-uncomputable: #d97706;
+  --color-pending: #6b7280;
+  --color-stale: #f59e0b;
+}

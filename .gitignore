@@ -1,2 +1,29 @@
 plans/
 .claude/
+
+# Secrets — never commit real env files
+.env
+backend/.env
+frontend/.env.local
+**/.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# Node
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Storage
+backend/storage/
+
+# OS
+.DS_Store
+
