@@ -1,7 +1,26 @@
 # Project Changelog
 
-**Latest Update:** 2026-05-29  
+**Latest Update:** 2026-05-30  
 **All Versions Below**
+
+---
+
+## [2026-05-30] — UI/UX Redesign & Brand Alignment
+
+### Frontend Redesign (7-phase)
+- **Design tokens:** Full CSS-var token system in `globals.css` (light + `.dark`); `tailwind.config.ts` mapped; Inter + JetBrains Mono loaded via `next/font`. Clinical status tokens: exact emerald-500/red-500/amber-500.
+- **shadcn/ui primitives:** Button, Card, Badge, Input, Textarea, Table, Dialog, Tooltip, Tabs, Select, Skeleton, Sonner added; `ThemeProvider` with no-flash dark mode; `cn()` utility.
+- **App shell:** Persistent sidebar (desktop) + mobile drawer; brand logo lockup (abstract monoline peak glyph); breadcrumbs, theme toggle, user/sign-out in topbar; shared `LoadingState`/`EmptyState`/`ErrorState` with `03` microcopy.
+- **Core verdict surfaces:** `ClassificationBadge` with icon+text+aria (SC 1.4.1); `SegmentTimeline` using token status colors + indigo selection/hover; `SqiScoresPanel` with mono tabular-nums + pass/fail icon+aria-live; monitor page verdict-first hierarchy; report-viewer exact stale copy.
+- **Vital Agent chat:** Renamed from "Quality Assistant"; user bubble indigo; `sources` rendered as citation chips (linked); refusal + LLM-fallback states per voice doc.
+- **Shell surfaces:** Landing benefit-led hero + abstract waveform motif; branded login card; dashboard first-run `EmptyState`; upload tokenized dropzone; recordings list; settings RBAC preserved exactly.
+- **A11y + QA:** `eslint-plugin-jsx-a11y/recommended` enabled; custom lint guard banning `blue-*` + ad-hoc status hex; all label/control associations fixed; `aria-live` on SQI panel + chat; zero lint errors.
+- **Docs:** `design-guidelines.md` updated (Brand Indigo interactive, Dark Mode in-scope); `branding/04` migration marked complete + dark mode reclassified in-scope.
+
+### Zero regressions
+- All routes compile ✅ — 10 routes generated (static + dynamic).
+- Zero `blue-*` classes in components (grep clean).
+- Settings RBAC role-gating logic unchanged.
 
 ---
 

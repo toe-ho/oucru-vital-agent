@@ -2,6 +2,8 @@
 
 import { useReport } from "@/lib/queries/report-queries";
 import { ClassificationBadge } from "@/components/ui/classification-badge";
+import { Stat } from "@/components/ui/stat";
+import { Button } from "@/components/ui/button";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -13,14 +15,10 @@ export function ReportViewer({ reportId }: ReportViewerProps) {
   const { data: report, isLoading, error } = useReport(reportId);
 
   if (isLoading) {
-    return <div className="py-8 text-center text-sm text-gray-500">Loading report…</div>;
+    return <div className="py-8 text-center text-sm text-muted-foreground">Loading report…</div>;
   }
   if (error || !report) {
-    return (
-      <div className="py-8 text-center text-sm text-red-600">
-        Failed to load report.
-      </div>
-    );
+    return <div className="py-8 text-center text-sm text-reject">Failed to load report.</div>;
   }
 
   const summary = report.content_json?.summary ?? {};
@@ -28,25 +26,27 @@ export function ReportViewer({ reportId }: ReportViewerProps) {
 
   return (
     <div className="space-y-6">
-      {/* Stale banner */}
+      {/* Stale banner — exact required copy */}
       {report.is_stale && (
-        <div className="rounded-md bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
-          This report may be outdated due to later segment overrides.
+        <div className="rounded-md border border-stale/30 bg-stale/10 px-4 py-3 text-sm text-stale" role="alert">
+          Report is stale: overrides postdate generation. Regenerate to refresh.
         </div>
       )}
 
-      {/* KPI summary cards */}
+      {/* Verdict-first summary cards */}
       {Object.keys(summary).length > 0 && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {Object.entries(summary).map(([key, value]) => (
-            <div key={key} className="rounded-lg border border-gray-200 bg-white p-3">
-              <p className="truncate text-xs capitalize text-gray-500">
+            <div key={key} className="rounded-lg border border-border bg-card p-3">
+              <p className="truncate text-xs capitalize text-muted-foreground">
                 {key.replace(/_/g, " ")}
               </p>
-              <p className="mt-1 text-lg font-semibold text-gray-900">
-                {typeof value === "number" && value < 2
-                  ? `${(value * 100).toFixed(1)}%`
-                  : String(value)}
+              <p className="mt-1 text-lg font-semibold text-foreground">
+                <Stat>
+                  {typeof value === "number" && value < 2
+                    ? `${(value * 100).toFixed(1)}%`
+                    : String(value)}
+                </Stat>
               </p>
             </div>
           ))}
@@ -55,37 +55,36 @@ export function ReportViewer({ reportId }: ReportViewerProps) {
 
       {/* Segments table */}
       {segments.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border border-gray-200">
-          <table className="min-w-full divide-y divide-gray-100 text-sm">
-            <thead className="bg-gray-50">
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <table className="min-w-full divide-y divide-border text-sm">
+            <thead className="bg-muted/30">
               <tr>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">#</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">AI</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Effective</th>
-                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">Score</th>
-                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">Overrides</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">#</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">AI</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Effective</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-muted-foreground">Score</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-muted-foreground">Overrides</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50 bg-white">
+            <tbody className="divide-y divide-border bg-card">
               {segments.map((seg) => (
-                <tr key={seg.segment_id} className="hover:bg-gray-50">
-                  <td className="px-4 py-2 text-gray-700">{seg.segment_number}</td>
+                <tr key={seg.segment_id} className="hover:bg-muted/30 transition-colors">
+                  <td className="px-4 py-2 text-muted-foreground"><Stat>{seg.segment_number}</Stat></td>
                   <td className="px-4 py-2">
                     <ClassificationBadge classification={seg.ai_classification} />
                   </td>
                   <td className="px-4 py-2">
-                    <ClassificationBadge
-                      classification={seg.effective_classification}
-                      effective
-                    />
+                    <ClassificationBadge classification={seg.effective_classification} effective />
                   </td>
-                  <td className="px-4 py-2 text-right text-gray-600">
-                    {seg.quality_score !== undefined
-                      ? `${(seg.quality_score * 100).toFixed(1)}%`
-                      : "—"}
+                  <td className="px-4 py-2 text-right">
+                    <Stat className="text-foreground">
+                      {seg.quality_score !== undefined
+                        ? `${(seg.quality_score * 100).toFixed(1)}%`
+                        : "—"}
+                    </Stat>
                   </td>
-                  <td className="px-4 py-2 text-right text-gray-600">
-                    {seg.override_count}
+                  <td className="px-4 py-2 text-right">
+                    <Stat className="text-muted-foreground">{seg.override_count}</Stat>
                   </td>
                 </tr>
               ))}
@@ -96,22 +95,16 @@ export function ReportViewer({ reportId }: ReportViewerProps) {
 
       {/* Export buttons */}
       <div className="flex gap-3">
-        <a
-          href={`${API_URL}/api/reports/${reportId}/export?format=html`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-        >
-          Download HTML
-        </a>
-        <a
-          href={`${API_URL}/api/reports/${reportId}/export?format=pdf`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-        >
-          Download PDF
-        </a>
+        <Button variant="outline" size="sm" asChild>
+          <a href={`${API_URL}/api/reports/${reportId}/export?format=html`} target="_blank" rel="noopener noreferrer">
+            Download HTML
+          </a>
+        </Button>
+        <Button variant="outline" size="sm" asChild>
+          <a href={`${API_URL}/api/reports/${reportId}/export?format=pdf`} target="_blank" rel="noopener noreferrer">
+            Download PDF
+          </a>
+        </Button>
       </div>
     </div>
   );

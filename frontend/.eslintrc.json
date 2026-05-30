@@ -1,0 +1,20 @@
+{
+  "extends": [
+    "next/core-web-vitals",
+    "plugin:jsx-a11y/recommended"
+  ],
+  "plugins": ["jsx-a11y"],
+  "rules": {
+    "no-restricted-syntax": [
+      "warn",
+      {
+        "selector": "JSXAttribute[name.name='className'][value.value=/\\bbg-blue-|\\btext-blue-|\\bborder-blue-|\\bring-blue-/]",
+        "message": "Avoid raw blue-* utility classes in components. Use token classes (bg-primary, text-primary, bg-brand-ink, etc.) instead."
+      },
+      {
+        "selector": "JSXAttribute[name.name='className'][value.value=/#(16a34a|10b981|dc2626|ef4444|d97706|f59e0b)/]",
+        "message": "Avoid ad-hoc status hex values. Use token classes (text-accept, text-reject, text-uncomputable) instead."
+      }
+    ]
+  }
+}

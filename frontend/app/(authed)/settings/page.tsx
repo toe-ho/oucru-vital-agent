@@ -1,9 +1,12 @@
 'use client';
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { get, put } from "@/lib/api-client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { LoadingState } from "@/components/feedback/loading-state";
 import type { ThresholdSettings } from "@/lib/types";
 
 export default function SettingsPage() {
@@ -45,67 +48,54 @@ export default function SettingsPage() {
   };
 
   return (
-    <main className="min-h-screen bg-gray-50 p-6">
-      <div className="mx-auto max-w-2xl space-y-6">
-        <div className="flex items-center gap-3">
-          <Link href="/dashboard" className="text-sm text-blue-600 hover:underline">
-            ← Dashboard
-          </Link>
-          <h1 className="text-xl font-bold text-gray-900">Settings</h1>
+    <div className="mx-auto max-w-2xl space-y-6">
+      <h1 className="text-xl font-bold text-foreground">Settings</h1>
+
+      {!isAdmin && (
+        <div className="rounded-md border border-uncomputable/30 bg-uncomputable/10 px-4 py-3 text-sm text-uncomputable">
+          You have read-only access. Contact an administrator to modify thresholds.
         </div>
+      )}
 
-        {!isAdmin && (
-          <div className="rounded-md bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
-            You have read-only access. Contact an administrator to modify thresholds.
-          </div>
-        )}
-
-        <div className="rounded-xl border border-gray-200 bg-white p-6">
-          <h2 className="mb-4 text-sm font-semibold text-gray-800">SQI Thresholds</h2>
-
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">SQI Thresholds</CardTitle>
+        </CardHeader>
+        <CardContent>
           {isLoading ? (
-            <p className="text-sm text-gray-500">Loading…</p>
+            <LoadingState rows={4} />
           ) : (
             <form onSubmit={handleSave} className="space-y-4">
               {Object.keys(settings).length === 0 ? (
-                <p className="text-sm text-gray-500">No threshold settings found.</p>
+                <p className="text-sm text-muted-foreground">No threshold settings found.</p>
               ) : (
                 Object.entries(settings).map(([key, value]) => (
                   <div key={key}>
-                    <label className="block text-xs font-medium text-gray-700">
+                    <label className="block text-xs font-medium text-foreground mb-1">
                       {key.replace(/_/g, " ")}
                     </label>
-                    <input
+                    <Input
                       type="text"
                       value={String(value)}
                       onChange={(e) => handleChange(key, e.target.value)}
                       disabled={!isAdmin}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-500"
                     />
                   </div>
                 ))
               )}
 
-              {saveError && (
-                <p className="text-sm text-red-600">{saveError}</p>
-              )}
-              {saveSuccess && (
-                <p className="text-sm text-green-600">Settings saved successfully.</p>
-              )}
+              {saveError && <p className="text-sm text-reject">{saveError}</p>}
+              {saveSuccess && <p className="text-sm text-accept">Settings saved successfully.</p>}
 
               {isAdmin && Object.keys(settings).length > 0 && (
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-                >
+                <Button type="submit" disabled={isSaving}>
                   {isSaving ? "Saving…" : "Save Changes"}
-                </button>
+                </Button>
               )}
             </form>
           )}
-        </div>
-      </div>
-    </main>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

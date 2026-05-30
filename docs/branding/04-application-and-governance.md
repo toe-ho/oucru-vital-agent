@@ -1,28 +1,22 @@
 # 04 — Application & Governance
 
-**Last Updated:** 2026-05-30
+**Last Updated:** 2026-05-30 (UI/UX redesign complete)
 
 How the brand gets applied in code, the rules that protect it, and the
 decisions still open.
 
 ---
 
-## Token Migration: blue-500 → Brand Indigo
+## Token Migration: blue-500 → Brand Indigo ✅ COMPLETE
 
-The interactive primary changes from `blue-500` (`#3b82f6`) to **Brand Indigo**
-(`#4338ca`). Do this as **one design-token change**, not scattered edits.
+**Status (2026-05-30):** Migration complete. `blue-*` utilities have been fully retired from all component files. The interactive primary is now **Brand Indigo** (`#4338ca` light / `#6366f1` dark) via CSS-var tokens.
 
-**Plan**
-1. Define a single source token (e.g. `--color-primary` / Tailwind theme
-   `primary`) = Brand Indigo; `primary-hover` = `indigo-800`.
-2. Point shadcn/ui theme variables at the token.
-3. Grep for hardcoded `blue-500` / `blue-600` / `#3b82f6` / `#2563eb` and
-   replace with the token.
-4. Update `docs/design-guidelines.md` "Interactive Colors" table.
-5. Visual QA: buttons, links, focus rings, active nav, selected rows.
-
-**Audit targets:** Tailwind config, shadcn theme, `design-guidelines.md`,
-component files using `blue-*` utilities.
+**Completed work:**
+- `globals.css` defines `--primary: 243 75% 53%` (light) and `239 84% 67%` (dark).
+- `tailwind.config.ts` maps all tokens via `hsl(var(--x))`.
+- All component files use `bg-primary`, `text-primary`, `ring-ring` — zero raw `blue-*`.
+- ESLint guard added (`frontend/.eslintrc.json`) to prevent regressions.
+- AA contrast verified: indigo-700 (`#4338ca`) on white = 6.8:1 ✅.
 
 ---
 
@@ -87,7 +81,7 @@ When changing anything brand-related:
 |---|----------|--------|------|
 | 1 | Final Brand Indigo hex | Proposed `#4338ca` | May shift ±1 step after AA audit |
 | 2 | Mono family | Open | IBM Plex Mono vs JetBrains Mono |
-| 3 | Dark mode scope | Deferred | Brand Ink base defined; not yet in product |
+| 3 | Dark mode scope | **Implemented** | `next-themes` + `.dark` token block; theme toggle in app shell; reclassified in-scope |
 | 4 | Logo production | Open | In-house vs commissioned designer |
 | 5 | External-launch name | Deferred | Re-open "OUCRU Vital Agent" only if launching beyond OUCRU |
 

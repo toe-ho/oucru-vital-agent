@@ -2,10 +2,99 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --color-accept: #16a34a;
-  --color-reject: #dc2626;
-  --color-uncomputable: #d97706;
-  --color-pending: #6b7280;
-  --color-stale: #f59e0b;
+@layer base {
+  :root {
+    /* shadcn/ui core tokens */
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 243 75% 53%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 220 14% 96%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 243 75% 53%;
+    --radius: 0.5rem;
+
+    /* Clinical status tokens — exact emerald-500 / red-500 / amber-500 */
+    --accept: 160 84% 39%;
+    --accept-foreground: 0 0% 100%;
+    --reject: 0 84% 60%;
+    --reject-foreground: 0 0% 100%;
+    --uncomputable: 38 92% 50%;
+    --uncomputable-foreground: 222 47% 11%;
+    --stale: 38 92% 50%;
+    --stale-foreground: 222 47% 11%;
+
+    /* Brand identity tokens */
+    --brand: 243 75% 53%;
+    --brand-hover: 243 75% 45%;
+    --brand-ink: 226 100% 97%;
+    --brand-tint: 226 100% 94%;
+  }
+
+  .dark {
+    /* shadcn/ui dark tokens */
+    --background: 222 84% 5%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 239 84% 67%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 91% 71%;
+    --destructive-foreground: 0 0% 0%;
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: 239 84% 67%;
+
+    /* Clinical status tokens — lifted luminance for dark ink */
+    --accept: 160 84% 52%;
+    --accept-foreground: 222 84% 5%;
+    --reject: 0 91% 71%;
+    --reject-foreground: 222 84% 5%;
+    --uncomputable: 43 96% 56%;
+    --uncomputable-foreground: 222 84% 5%;
+    --stale: 43 96% 56%;
+    --stale-foreground: 222 84% 5%;
+
+    /* Brand identity tokens — dark */
+    --brand: 239 84% 67%;
+    --brand-hover: 239 84% 75%;
+    --brand-ink: 222 47% 11%;
+    --brand-tint: 217 33% 17%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+}
+
+@layer utilities {
+  /* Mono numerals — use on any measurement/score display */
+  .num {
+    @apply font-mono tabular-nums;
+  }
 }

@@ -6,16 +6,17 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  ReferenceLine,
   ReferenceArea,
+  ReferenceLine,
   ResponsiveContainer,
 } from "recharts";
 
+// Neutral tints for segment background areas — no raw status hex
 const CLASSIFICATION_FILL: Record<string, string> = {
-  accept: "#dcfce7",
-  reject: "#fee2e2",
-  uncomputable: "#fef3c7",
-  pending: "#f3f4f6",
+  accept: "hsl(160 84% 39% / 0.12)",
+  reject: "hsl(0 84% 60% / 0.12)",
+  uncomputable: "hsl(38 92% 50% / 0.12)",
+  pending: "hsl(220 14% 96% / 0.5)",
 };
 
 interface SegmentBoundary {
@@ -31,7 +32,7 @@ interface WaveformViewerProps {
 
 export function WaveformViewer({ data, segmentBoundaries = [] }: WaveformViewerProps) {
   return (
-    <div className="h-[200px] w-full">
+    <div className="h-[200px] w-full" role="img" aria-label="Waveform viewer — abstract signal boundaries">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 4, right: 8, bottom: 4, left: 8 }}>
           <XAxis dataKey="time" tick={{ fontSize: 10 }} minTickGap={40} />
@@ -42,14 +43,14 @@ export function WaveformViewer({ data, segmentBoundaries = [] }: WaveformViewerP
             labelFormatter={(label) => `t=${label}`}
           />
 
-          {/* Colored segment background areas */}
+          {/* Neutral segment background areas */}
           {segmentBoundaries.map((seg, i) => (
             <ReferenceArea
               key={`area-${i}`}
               x1={seg.start}
               x2={seg.end}
-              fill={CLASSIFICATION_FILL[seg.classification] ?? "#f3f4f6"}
-              fillOpacity={0.5}
+              fill={CLASSIFICATION_FILL[seg.classification] ?? "transparent"}
+              fillOpacity={1}
               strokeOpacity={0}
             />
           ))}
@@ -59,17 +60,18 @@ export function WaveformViewer({ data, segmentBoundaries = [] }: WaveformViewerP
             <ReferenceLine
               key={`line-${i}`}
               x={seg.start}
-              stroke="#94a3b8"
+              stroke="hsl(215 16% 47% / 0.4)"
               strokeDasharray="3 3"
               strokeWidth={1}
             />
           ))}
 
+          {/* Signal line — neutral slate, abstract */}
           <Line
             type="monotone"
             dataKey="value"
             dot={false}
-            stroke="#2563eb"
+            stroke="hsl(215 16% 47%)"
             strokeWidth={1.5}
             isAnimationActive={false}
           />

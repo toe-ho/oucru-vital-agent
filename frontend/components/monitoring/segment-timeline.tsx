@@ -1,21 +1,19 @@
 'use client';
 
 import { useState } from "react";
+import { cn } from "@/lib/utils";
 import type { SegmentResult } from "@/lib/types";
 
+// Use token class names — no raw status hex
 const BLOCK_COLOR: Record<string, string> = {
-  accept: "bg-green-500",
-  reject: "bg-red-500",
-  uncomputable: "bg-amber-400",
-  pending: "bg-gray-400",
+  accept: "bg-accept",
+  reject: "bg-reject",
+  uncomputable: "bg-uncomputable",
+  pending: "bg-muted-foreground/40",
 };
 
-const BORDER_COLOR: Record<string, string> = {
-  accept: "border-green-700",
-  reject: "border-red-700",
-  uncomputable: "border-amber-600",
-  pending: "border-gray-600",
-};
+// Indigo for selection/hover — never a verdict color (branding rule)
+const SELECTED_RING = "ring-2 ring-primary ring-offset-1";
 
 interface SegmentTimelineProps {
   segments: SegmentResult[];
@@ -33,17 +31,19 @@ export function SegmentTimeline({ segments, selectedSegmentId, onSelect }: Segme
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
 
   if (!segments.length) {
-    return <p className="text-sm text-gray-500">No segments available.</p>;
+    return <p className="text-sm text-muted-foreground">No segments available.</p>;
   }
 
   return (
     <div className="relative">
-      <div className="flex h-8 w-full overflow-x-auto rounded-md border border-gray-200">
+      <div
+        className="flex h-8 w-full overflow-x-auto rounded-md border border-border"
+        aria-label="Segment timeline"
+      >
         {segments.map((seg) => {
           const classification = seg.ai_classification;
           const isSelected = seg.segment_id === selectedSegmentId;
-          const blockColor = BLOCK_COLOR[classification] ?? "bg-gray-300";
-          const borderColor = BORDER_COLOR[classification] ?? "border-gray-500";
+          const blockColor = BLOCK_COLOR[classification] ?? "bg-muted";
 
           return (
             <button
@@ -59,40 +59,46 @@ export function SegmentTimeline({ segments, selectedSegmentId, onSelect }: Segme
               }
               onMouseLeave={() => setTooltip(null)}
               style={{ flex: `0 0 ${100 / segments.length}%` }}
-              className={`h-full transition-opacity hover:opacity-80 ${blockColor} ${
-                isSelected ? `border-2 ${borderColor}` : "border-0"
-              }`}
-              aria-label={`Segment ${seg.segment_number}: ${classification}`}
+              className={cn(
+                "h-full transition-opacity hover:opacity-75 focus-visible:outline-none",
+                blockColor,
+                isSelected && SELECTED_RING
+              )}
+              aria-label={`Segment ${seg.segment_number}: ${classification}${seg.quality_score !== undefined ? ` — score ${(seg.quality_score * 100).toFixed(1)}%` : ""}`}
+              aria-current={isSelected ? "true" : undefined}
             />
           );
         })}
       </div>
 
-      {/* Tooltip */}
+      {/* Verdict-first mono tooltip */}
       {tooltip && (() => {
         const seg = segments.find((s) => s.segment_id === tooltip.segmentId);
         if (!seg) return null;
+        const scoreLabel = seg.quality_score !== undefined
+          ? ` — ${(seg.quality_score * 100).toFixed(1)}%`
+          : "";
         return (
           <div
-            className="pointer-events-none absolute z-10 rounded-md bg-gray-900 px-2 py-1 text-xs text-white shadow-lg"
+            className="pointer-events-none absolute z-10 rounded-md bg-popover border border-border px-2 py-1 text-xs text-popover-foreground shadow-lg"
             style={{ left: tooltip.x, top: tooltip.y + 36 }}
+            aria-hidden="true"
           >
-            <div>Segment #{seg.segment_number}</div>
-            <div className="capitalize">{seg.ai_classification}</div>
-            {seg.quality_score !== undefined && (
-              <div>Score: {(seg.quality_score * 100).toFixed(1)}%</div>
-            )}
+            <div className="capitalize font-medium">
+              {seg.ai_classification}{scoreLabel}
+            </div>
+            <div className="num text-muted-foreground">#{seg.segment_number}</div>
           </div>
         );
       })()}
 
-      {/* Segment number labels for selected */}
-      <div className="mt-1 flex text-xs text-gray-400 overflow-x-auto">
+      {/* Segment number labels */}
+      <div className="mt-1 flex text-xs text-muted-foreground overflow-x-auto" aria-hidden="true">
         {segments.map((seg) => (
           <span
             key={seg.segment_id}
             style={{ flex: `0 0 ${100 / segments.length}%` }}
-            className="truncate text-center"
+            className="truncate text-center num"
           >
             {seg.segment_number}
           </span>

@@ -1,6 +1,6 @@
 # Design Guidelines
 
-**Last Updated:** 2026-05-29  
+**Last Updated:** 2026-05-30  
 **Framework:** Tailwind CSS + shadcn/ui (Radix UI primitives)  
 **Target:** WCAG 2.1 AA accessibility
 
@@ -36,12 +36,26 @@
 
 ### Interactive Colors
 
-| Element | Hex | Tailwind | Usage |
-|---------|-----|----------|-------|
-| **Primary Button** | #3b82f6 | `blue-500` | Main actions (assess, upload) |
-| **Primary Hover** | #2563eb | `blue-600` | Button hover state |
-| **Danger Button** | #ef4444 | `red-500` | Destructive actions (delete) |
-| **Success Feedback** | #10b981 | `emerald-500` | Confirmation, success messages |
+> **Updated 2026-05-30:** All interactive elements now use **Brand Indigo** (`#4338ca`). `blue-*` utilities are retired from components — use `bg-primary`, `text-primary`, `ring-ring` tokens.
+
+| Element | Hex | Token | Usage |
+|---------|-----|-------|-------|
+| **Primary Button** | #4338ca | `bg-primary` | Main actions (assess, upload) — Brand Indigo |
+| **Primary Hover** | #3730a3 | `bg-brand-hover` | Button hover state |
+| **Dark Primary** | #6366f1 | `bg-primary` (dark) | Indigo-500 in `.dark` theme |
+| **Danger Button** | #ef4444 | `bg-destructive` | Destructive actions (delete) |
+| **Focus Ring** | #4338ca | `ring-ring` | Keyboard focus indicator ≥3:1 contrast |
+
+### Dark Mode
+
+> **Reclassified in-scope (2026-05-30).** Dark mode is fully implemented via `next-themes` + Tailwind `darkMode: "class"`. All tokens have `.dark` overrides in `globals.css`. The system respects OS preference (`defaultTheme="system"`).
+
+| Feature | Status |
+|---------|--------|
+| Token dark variants | ✅ Implemented |
+| `next-themes` provider | ✅ Implemented |
+| Theme toggle in app shell | ✅ Implemented |
+| No hydration flash | ✅ `suppressHydrationWarning` on `<html>` |
 
 ### Example Usage
 

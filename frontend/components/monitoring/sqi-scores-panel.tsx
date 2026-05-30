@@ -1,5 +1,8 @@
 'use client';
 
+import { CheckCircle, XCircle } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Stat } from "@/components/ui/stat";
 import type { SegmentResult } from "@/lib/types";
 
 interface SqiScoresPanelProps {
@@ -10,61 +13,76 @@ export function SqiScoresPanel({ segment }: SqiScoresPanelProps) {
   const metrics = segment.sqi_summary ?? [];
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
-      <h3 className="mb-3 text-sm font-semibold text-gray-800">SQI Scores</h3>
-
-      {metrics.length === 0 ? (
-        <p className="text-xs text-gray-500">No SQI metrics available.</p>
-      ) : (
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b border-gray-100 text-gray-500">
-              <th className="pb-1 text-left font-medium">Metric</th>
-              <th className="pb-1 text-right font-medium">Value</th>
-              <th className="pb-1 text-right font-medium">Range</th>
-              <th className="pb-1 text-center font-medium">Pass</th>
-            </tr>
-          </thead>
-          <tbody>
-            {metrics.map((m) => {
-              const rangeStr =
-                m.threshold_min !== undefined && m.threshold_max !== undefined
-                  ? `${m.threshold_min}–${m.threshold_max}`
-                  : m.threshold_min !== undefined
-                  ? `≥${m.threshold_min}`
-                  : m.threshold_max !== undefined
-                  ? `≤${m.threshold_max}`
-                  : "—";
-
-              return (
-                <tr key={m.metric_name} className="border-b border-gray-50">
-                  <td className="py-1 font-mono text-gray-700">{m.metric_name}</td>
-                  <td className="py-1 text-right text-gray-700">
-                    {typeof m.value === "number" ? m.value.toFixed(3) : m.value}
-                  </td>
-                  <td className="py-1 text-right text-gray-500">{rangeStr}</td>
-                  <td className="py-1 text-center">
-                    {m.passed ? (
-                      <span className="text-green-600" title="Passed">✓</span>
-                    ) : (
-                      <span className="text-red-600" title="Failed">✗</span>
-                    )}
-                  </td>
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">
+          SQI Scores
+          {segment.quality_score !== undefined && (
+            <span className="ml-2 font-normal text-muted-foreground">
+              Overall: <Stat className="font-semibold text-foreground">
+                {(segment.quality_score * 100).toFixed(1)}%
+              </Stat>
+            </span>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {metrics.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No SQI metrics available.</p>
+        ) : (
+          <div aria-live="polite" role="status" aria-label="SQI metric scores">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border text-muted-foreground">
+                  <th className="pb-1 text-left font-medium">Metric</th>
+                  <th className="pb-1 text-right font-medium">Value</th>
+                  <th className="pb-1 text-right font-medium">Range</th>
+                  <th className="pb-1 text-center font-medium">Pass</th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
+              </thead>
+              <tbody>
+                {metrics.map((m) => {
+                  const rangeStr =
+                    m.threshold_min !== undefined && m.threshold_max !== undefined
+                      ? `${m.threshold_min}–${m.threshold_max}`
+                      : m.threshold_min !== undefined
+                      ? `≥${m.threshold_min}`
+                      : m.threshold_max !== undefined
+                      ? `≤${m.threshold_max}`
+                      : "—";
 
-      {segment.quality_score !== undefined && (
-        <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-2">
-          <span className="text-xs text-gray-500">Overall Quality Score</span>
-          <span className="text-sm font-semibold text-gray-800">
-            {(segment.quality_score * 100).toFixed(1)}%
-          </span>
-        </div>
-      )}
-    </div>
+                  return (
+                    <tr key={m.metric_name} className="border-b border-border/50">
+                      <td className="py-1 font-mono text-foreground">{m.metric_name}</td>
+                      <td className="py-1 text-right">
+                        <Stat className="text-foreground">
+                          {typeof m.value === "number" ? m.value.toFixed(3) : m.value}
+                        </Stat>
+                      </td>
+                      <td className="py-1 text-right">
+                        <Stat className="text-muted-foreground">{rangeStr}</Stat>
+                      </td>
+                      <td className="py-1 text-center">
+                        {m.passed ? (
+                          <span aria-label="Passed">
+                            <CheckCircle className="inline h-3.5 w-3.5 text-accept" aria-hidden="true" />
+                            <span className="sr-only">Passed</span>
+                          </span>
+                        ) : (
+                          <span aria-label="Failed">
+                            <XCircle className="inline h-3.5 w-3.5 text-reject" aria-hidden="true" />
+                            <span className="sr-only">Failed</span>
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
