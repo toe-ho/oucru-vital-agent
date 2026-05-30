@@ -45,3 +45,13 @@ class BatchUploadResponse(BaseModel):
 
     recordings: list[RecordingResponse]
     errors: list[dict]
+
+
+class FileInspectResponse(BaseModel):
+    """Auto-detected metadata from a signal file, returned before full upload."""
+
+    columns: list[str]
+    numeric_columns: list[str]
+    detected_signal_column: Optional[str]
+    detected_signal_type: Optional[Literal["ecg", "ppg"]]
+    detected_sampling_rate: Optional[int]

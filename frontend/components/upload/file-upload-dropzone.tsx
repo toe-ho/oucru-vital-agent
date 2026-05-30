@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useState } from "react";
-import { useUploadRecording, useBatchUpload } from "@/lib/queries/recording-queries";
+import { useCallback, useEffect, useState } from "react";
+import { useUploadRecording, useBatchUpload, useInspectFile } from "@/lib/queries/recording-queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,15 +20,38 @@ export function FileUploadDropzone({ onSuccess }: FileUploadDropzoneProps) {
   const [signalType, setSignalType] = useState<"ecg" | "ppg">("ecg");
   const [samplingRate, setSamplingRate] = useState(250);
   const [signalColumn, setSignalColumn] = useState("");
+  const [numericColumns, setNumericColumns] = useState<string[]>([]);
   const [subjectId, setSubjectId] = useState("");
   const [notes, setNotes] = useState("");
 
   const uploadSingle = useUploadRecording();
   const uploadBatch = useBatchUpload();
+  const inspectFile = useInspectFile();
 
   const isPending = uploadSingle.isPending || uploadBatch.isPending;
   const isSuccess = uploadSingle.isSuccess || uploadBatch.isSuccess;
   const error = uploadSingle.error ?? uploadBatch.error;
+
+  // Auto-detect columns/signal type from the first file
+  useEffect(() => {
+    if (!files.length) return;
+    inspectFile.mutate(files[0], {
+      onSuccess: (result) => {
+        setNumericColumns(result.numeric_columns);
+        if (result.detected_signal_column) setSignalColumn(result.detected_signal_column);
+        if (result.detected_signal_type) setSignalType(result.detected_signal_type);
+        if (result.detected_sampling_rate) setSamplingRate(result.detected_sampling_rate);
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [files]);
+
+  const setFileList = (newFiles: File[]) => {
+    setFiles(newFiles);
+    // Reset detection state when files change
+    setNumericColumns([]);
+    setSignalColumn("");
+  };
 
   const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -36,11 +59,11 @@ export function FileUploadDropzone({ onSuccess }: FileUploadDropzoneProps) {
     const dropped = Array.from(e.dataTransfer.files).filter(
       (f) => f.name.endsWith(".csv") || f.name.endsWith(".parquet")
     );
-    setFiles((prev) => [...prev, ...dropped]);
+    setFileList(dropped);
   }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) setFiles(Array.from(e.target.files));
+    if (e.target.files) setFileList(Array.from(e.target.files));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -125,15 +148,35 @@ export function FileUploadDropzone({ onSuccess }: FileUploadDropzoneProps) {
       </div>
 
       <div>
-        <label htmlFor="signal-column" className="block text-xs font-medium text-foreground mb-1">Signal Column *</label>
-        <Input
-          id="signal-column"
-          type="text"
-          value={signalColumn}
-          onChange={(e) => setSignalColumn(e.target.value)}
-          required
-          placeholder="e.g. ecg_lead_ii"
-        />
+        <label htmlFor="signal-column" className="block text-xs font-medium text-foreground mb-1">
+          Signal Column *
+          {inspectFile.isPending && (
+            <span className="ml-2 text-muted-foreground font-normal">detecting…</span>
+          )}
+        </label>
+        {numericColumns.length > 0 ? (
+          <select
+            id="signal-column"
+            value={signalColumn}
+            onChange={(e) => setSignalColumn(e.target.value)}
+            required
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {numericColumns.map((col) => (
+              <option key={col} value={col}>{col}</option>
+            ))}
+          </select>
+        ) : (
+          <Input
+            id="signal-column"
+            type="text"
+            value={signalColumn}
+            onChange={(e) => setSignalColumn(e.target.value)}
+            required
+            placeholder="e.g. ecg_lead_ii"
+            disabled={inspectFile.isPending}
+          />
+        )}
       </div>
 
       <div>

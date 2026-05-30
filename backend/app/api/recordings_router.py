@@ -1,9 +1,12 @@
 """REST endpoints for signal recording upload, batch upload, and retrieval."""
 
+import io
 import json
 import uuid
+from pathlib import Path
 from typing import Annotated
 
+import pandas as pd
 from fastapi import APIRouter, Depends, Form, Request, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +20,7 @@ from app.models.recording_models import AssessmentJob
 from app.schemas.assessment_schemas import AssessJobResponse
 from app.schemas.recording_schemas import (
     BatchUploadResponse,
+    FileInspectResponse,
     RecordingResponse,
     RecordingUploadMeta,
 )
@@ -36,6 +40,73 @@ def _parse_meta(meta_json: str) -> RecordingUploadMeta:
         return RecordingUploadMeta.model_validate(json.loads(meta_json))
     except Exception as exc:
         raise AppError(400, "InvalidMeta", f"Could not parse meta JSON: {exc}") from exc
+
+
+_ECG_KEYWORDS = {"ecg", "lead", "ekg", "cardiac"}
+_PPG_KEYWORDS = {"ppg", "spo2", "pleth", "ir", "red"}
+_TIME_KEYWORDS = {"timestamp", "time", "t", "datetime", "elapsed"}
+
+
+def _detect_signal_type(col_name: str) -> str | None:
+    lower = col_name.lower()
+    if any(k in lower for k in _ECG_KEYWORDS):
+        return "ecg"
+    if any(k in lower for k in _PPG_KEYWORDS):
+        return "ppg"
+    return None
+
+
+def _infer_sampling_rate(df: pd.DataFrame) -> int | None:
+    time_col = next(
+        (c for c in df.columns if c.lower() in _TIME_KEYWORDS and pd.api.types.is_numeric_dtype(df[c])),
+        None,
+    )
+    if time_col is None:
+        return None
+    intervals = df[time_col].dropna().diff().dropna()
+    if intervals.empty or intervals.median() <= 0:
+        return None
+    return int(round(1.0 / intervals.median()))
+
+
+@router.post("/inspect", response_model=FileInspectResponse, status_code=status.HTTP_200_OK)
+async def inspect_file(
+    file: UploadFile,
+    _current_user: Annotated[User, Depends(get_current_user)],
+) -> FileInspectResponse:
+    """Parse an uploaded file and return auto-detected column / signal metadata.
+
+    Does not persist anything — intended to be called before the real upload
+    so the UI can pre-fill the form fields.
+    """
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in {".csv", ".parquet"}:
+        raise AppError(400, "UnsupportedFormat", f"Unsupported extension '{ext}'.")
+
+    content = await file.read()
+    try:
+        df = pd.read_csv(io.BytesIO(content)) if ext == ".csv" else pd.read_parquet(io.BytesIO(content))
+    except Exception as exc:
+        raise AppError(400, "UnparsableFile", f"Could not parse file: {exc}") from exc
+
+    all_cols = list(df.columns)
+    numeric_cols = [c for c in all_cols if pd.api.types.is_numeric_dtype(df[c])]
+
+    # Best-guess signal column: first numeric col whose name hints at ecg/ppg, else first numeric
+    signal_col: str | None = next(
+        (c for c in numeric_cols if _detect_signal_type(c) is not None),
+        numeric_cols[0] if numeric_cols else None,
+    )
+
+    detected_type: str | None = _detect_signal_type(signal_col) if signal_col else None
+
+    return FileInspectResponse(
+        columns=all_cols,
+        numeric_columns=numeric_cols,
+        detected_signal_column=signal_col,
+        detected_signal_type=detected_type,  # type: ignore[arg-type]
+        detected_sampling_rate=_infer_sampling_rate(df),
+    )
 
 
 @router.post("/upload", response_model=RecordingResponse, status_code=status.HTTP_201_CREATED)

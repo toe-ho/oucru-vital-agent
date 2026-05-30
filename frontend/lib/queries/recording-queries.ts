@@ -39,6 +39,26 @@ export function useUploadRecording() {
   });
 }
 
+export interface FileInspectResult {
+  columns: string[];
+  numeric_columns: string[];
+  detected_signal_column: string | null;
+  detected_signal_type: "ecg" | "ppg" | null;
+  detected_sampling_rate: number | null;
+}
+
+export function useInspectFile() {
+  return useMutation({
+    mutationFn: (file: File) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      return post<FileInspectResult>("/api/recordings/inspect", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+    },
+  });
+}
+
 export function useBatchUpload() {
   const queryClient = useQueryClient();
   return useMutation({
